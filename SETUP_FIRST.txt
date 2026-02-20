@@ -1,0 +1,25 @@
+========================================
+  SET UP THIS PROJECT ON THIS COMPUTER
+========================================
+
+Node.js is not installed (or not in PATH). Do this once:
+
+1. INSTALL NODE.JS
+   - Go to: https://nodejs.org/
+   - Download the "LTS" version and install it.
+   - Restart Cursor (or open a new terminal) after installing.
+
+2. INSTALL DEPENDENCIES & RUN THE APP
+   - Double-click:  START_APP.bat
+   OR in a terminal in this folder run:
+      npm install
+      npm run dev
+
+3. OPEN THE APP IN YOUR BROWSER
+   When the dev server is running, open:
+
+      http://localhost:5173
+
+   (The terminal will also show this URL.)
+
+========================================
