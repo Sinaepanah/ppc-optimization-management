@@ -71,7 +71,7 @@ export function RelevancyFilterPanel({ campaigns, profile }: RelevancyFilterPane
       </p>
 
       {!profile ? (
-        <p className="muted">Create or select a topic profile in the Topic profiles section (below) to use the relevancy filter.</p>
+        <p className="muted">Create or select a topic profile in the Topic profiles section below to use the relevancy filter.</p>
       ) : (
         <>
           <div className="relevancy-config">

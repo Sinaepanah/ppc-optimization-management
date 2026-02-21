@@ -88,6 +88,10 @@ export default function App() {
         {tab === 'dedup' && <DeduplicationPanel campaigns={campaigns} />}
         {tab === 'relevancy' && (
           <div className="relevancy-tab">
+            <RelevancyFilterPanel
+              campaigns={campaigns}
+              profile={activeProfile}
+            />
             <ProfileManager
               profiles={profiles}
               activeProfile={activeProfile}
@@ -98,10 +102,6 @@ export default function App() {
               onDeleteProfile={deleteProfile}
               onLoadPreset={loadPreset}
               onSaveProfile={saveProfileNow}
-            />
-            <RelevancyFilterPanel
-              campaigns={campaigns}
-              profile={activeProfile}
             />
           </div>
         )}
