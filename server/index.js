@@ -105,6 +105,35 @@ app.put('/api/active-profile-id', async (req, res) => {
   }
 })
 
+app.post('/api/acos/recommendation', async (req, res) => {
+  try {
+    const { currentCpc, currentAcos, targetAcos } = req.body ?? {}
+
+    const cpc = Number(currentCpc)
+    const current = Number(currentAcos)
+    const target = Number(targetAcos)
+
+    if (!Number.isFinite(cpc) || !Number.isFinite(current) || !Number.isFinite(target)) {
+      return res.status(400).json({ error: 'All inputs must be numbers.' })
+    }
+    if (cpc <= 0 || current <= 0 || target <= 0) {
+      return res.status(400).json({ error: 'All inputs must be greater than zero.' })
+    }
+
+    const ratio = target / current
+    const recommendedCpc = cpc * ratio
+    const percentChange = ((recommendedCpc - cpc) / cpc) * 100
+
+    res.json({
+      recommendedCpc: Number(recommendedCpc.toFixed(4)),
+      percentChange: Number(percentChange.toFixed(2)),
+    })
+  } catch (e) {
+    console.error('POST /api/acos/recommendation', e)
+    res.status(500).json({ error: String(e.message) })
+  }
+})
+
 const PORT = process.env.PORT || 3001
 await ensureDataDir()
 app.listen(PORT, () => {

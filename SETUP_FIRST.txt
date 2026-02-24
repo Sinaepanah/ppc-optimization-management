@@ -1,18 +1,25 @@
 ========================================
   SET UP THIS PROJECT ON THIS COMPUTER
+  (e.g. after copying folder from another PC)
 ========================================
 
-Node.js is not installed (or not in PATH). Do this once:
+Do this ONCE on this computer:
 
 1. INSTALL NODE.JS
-   - Go to: https://nodejs.org/
+   - Double-click:  OPEN_NODE_DOWNLOAD.bat
+     (or go to https://nodejs.org/)
    - Download the "LTS" version and install it.
    - Restart Cursor (or open a new terminal) after installing.
 
 2. INSTALL DEPENDENCIES & RUN THE APP
    - Double-click:  START_APP.bat
+   This will install frontend + server dependencies and start the app.
+
    OR in a terminal in this folder run:
       npm install
+      cd server
+      npm install
+      cd ..
       npm run dev
 
 3. OPEN THE APP IN YOUR BROWSER
@@ -20,6 +27,10 @@ Node.js is not installed (or not in PATH). Do this once:
 
       http://localhost:5173
 
-   (The terminal will also show this URL.)
+   (START_APP.bat opens this for you automatically.)
+
+OPTIONAL: Run the backend (saves campaigns/profiles to server/data/)
+   - In a second terminal:  npm run server
+   - Backend runs at http://localhost:3001
 
 ========================================

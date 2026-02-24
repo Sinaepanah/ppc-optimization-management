@@ -6,10 +6,11 @@ import { DeduplicationPanel } from './components/DeduplicationPanel'
 import { RelevancyFilterPanel } from './components/RelevancyFilterPanel'
 import { ProfileManager } from './components/ProfileManager'
 import { AutoExactPage } from './autoExact/AutoExactPage'
+import { AcosPage } from './acos/AcosPage'
 import { useTopicProfiles } from './hooks/useTopicProfiles'
 import './App.css'
 
-type TabId = 'campaigns' | 'dedup' | 'relevancy' | 'autoExact'
+type TabId = 'campaigns' | 'dedup' | 'relevancy' | 'autoExact' | 'acos'
 
 export default function App() {
   const [campaigns, setCampaigns] = useState<Campaign[]>(() => loadCampaigns())
@@ -79,6 +80,14 @@ export default function App() {
         >
           Auto → Exact
         </button>
+        <button
+          type="button"
+          className={`tabs__btn ${tab === 'acos' ? 'tabs__btn--active' : ''}`}
+          onClick={() => setTab('acos')}
+          aria-pressed={tab === 'acos'}
+        >
+          ACOS
+        </button>
       </nav>
 
       <main className="main" role="main">
@@ -106,6 +115,7 @@ export default function App() {
           </div>
         )}
         {tab === 'autoExact' && <AutoExactPage profiles={profiles} />}
+        {tab === 'acos' && <AcosPage />}
       </main>
     </div>
   )
