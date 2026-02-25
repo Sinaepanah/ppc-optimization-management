@@ -24,47 +24,12 @@ function computeAcosRecommendation(currentCpc: number, currentAcos: number, targ
   return { recommendedCpc, percentChange }
 }
 
-async function fetchAcosRecommendation(
-  currentCpc: number,
-  currentAcos: number,
-  targetAcos: number
-): Promise<AcosResult | null> {
-  try {
-    const res = await fetch('/api/acos/recommendation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ currentCpc, currentAcos, targetAcos }),
-    })
-
-    if (!res.ok) {
-      throw new Error('Backend unavailable')
-    }
-
-    const data = await res.json()
-    if (
-      typeof data?.recommendedCpc === 'number' &&
-      typeof data?.percentChange === 'number' &&
-      Number.isFinite(data.recommendedCpc) &&
-      Number.isFinite(data.percentChange)
-    ) {
-      return { recommendedCpc: data.recommendedCpc, percentChange: data.percentChange }
-    }
-  } catch {
-    // Silent fallback to local calculation below
-  }
-
-  return computeAcosRecommendation(currentCpc, currentAcos, targetAcos)
-}
-
 export function AcosPage() {
   const [inputs, setInputs] = useState<AcosInputs>({
     currentCpc: '',
     currentAcos: '',
     targetAcos: '35',
   })
-  const [result, setResult] = useState<AcosResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
 
   const parsed = useMemo(() => {
     const currentCpc = parseFloat(inputs.currentCpc.replace(',', '.'))
@@ -81,28 +46,10 @@ export function AcosPage() {
     Number.isFinite(parsed.targetAcos) &&
     parsed.targetAcos > 0
 
-  async function handleCalculate() {
-    if (!canCalculate) {
-      setError('Enter positive numbers for CPC and ACOS values.')
-      setResult(null)
-      return
-    }
-
-    setIsLoading(true)
-    setError(null)
-
-    const value = await fetchAcosRecommendation(parsed.currentCpc, parsed.currentAcos, parsed.targetAcos)
-
-    setIsLoading(false)
-
-    if (!value) {
-      setError('Unable to calculate recommendation. Check inputs.')
-      setResult(null)
-      return
-    }
-
-    setResult(value)
-  }
+  const result = useMemo(
+    () => (canCalculate ? computeAcosRecommendation(parsed.currentCpc, parsed.currentAcos, parsed.targetAcos) : null),
+    [canCalculate, parsed.currentCpc, parsed.currentAcos, parsed.targetAcos]
+  )
 
   const changeLabel =
     result && result.percentChange !== 0
@@ -116,8 +63,7 @@ export function AcosPage() {
       <section className="panel">
         <h2>ACOS Optimizer</h2>
         <p className="panel-desc">
-          Input your current CPC and ACOS along with your target ACOS. The tool suggests a new CPC that moves you
-          toward your goal, assuming similar conversion rate and average order value.
+          Input your current CPC and ACOS along with your target ACOS. The suggested bid updates live as you type.
         </p>
 
         <div className="acos-grid">
@@ -175,22 +121,6 @@ export function AcosPage() {
                 <span className="acos-suffix">%</span>
               </div>
             </div>
-
-            <div className="acos-actions">
-              <button
-                type="button"
-                className="btn btn--primary"
-                onClick={handleCalculate}
-                disabled={!canCalculate || isLoading}
-              >
-                {isLoading ? 'Calculating…' : 'Calculate recommendation'}
-              </button>
-              {!canCalculate && (
-                <span className="muted"> Enter positive values for CPC, current ACOS, and target ACOS.</span>
-              )}
-            </div>
-
-            {error && <p className="auto-exact-error">{error}</p>}
           </div>
 
           <div className="acos-result">
@@ -209,7 +139,7 @@ export function AcosPage() {
                 </p>
               </>
             ) : (
-              <p className="muted">Enter values on the left and click “Calculate recommendation” to see a suggestion.</p>
+              <p className="muted">Enter values on the left — the suggested bid updates live as you type.</p>
             )}
           </div>
         </div>
