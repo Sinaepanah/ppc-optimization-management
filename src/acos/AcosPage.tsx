@@ -1,113 +1,121 @@
 import { useMemo, useState } from 'react'
+import { calculateSuggestedBid, validateAcosInputs } from './utils/calculator'
 
 interface AcosInputs {
-  currentCpc: string
-  currentAcos: string
+  clicks: string
+  orders: string
+  sellingPrice: string
+  profitPerUnit: string
   targetAcos: string
-}
-
-interface AcosResult {
-  recommendedCpc: number
-  percentChange: number
-}
-
-function computeAcosRecommendation(currentCpc: number, currentAcos: number, targetAcos: number): AcosResult | null {
-  if (currentCpc <= 0 || currentAcos <= 0 || targetAcos <= 0) return null
-
-  // Simple proportional rule of thumb:
-  // If conversion rate and AOV stay similar, ACOS moves roughly in proportion to CPC.
-  // New CPC ~= current CPC * (target ACOS / current ACOS)
-  const ratio = targetAcos / currentAcos
-  const recommendedCpc = currentCpc * ratio
-  const percentChange = ((recommendedCpc - currentCpc) / currentCpc) * 100
-
-  return { recommendedCpc, percentChange }
 }
 
 export function AcosPage() {
   const [inputs, setInputs] = useState<AcosInputs>({
-    currentCpc: '',
-    currentAcos: '',
+    clicks: '',
+    orders: '',
+    sellingPrice: '',
+    profitPerUnit: '',
     targetAcos: '35',
   })
 
   const parsed = useMemo(() => {
-    const currentCpc = parseFloat(inputs.currentCpc.replace(',', '.'))
-    const currentAcos = parseFloat(inputs.currentAcos.replace(',', '.'))
-    const targetAcos = parseFloat(inputs.targetAcos.replace(',', '.'))
-    return { currentCpc, currentAcos, targetAcos }
+    const parse = (s: string) => parseFloat(String(s).replace(',', '.')) || 0
+    return {
+      clicks: parse(inputs.clicks),
+      orders: parse(inputs.orders),
+      sellingPrice: parse(inputs.sellingPrice),
+      profitPerUnit: parse(inputs.profitPerUnit),
+      targetAcosPct: parse(inputs.targetAcos),
+    }
   }, [inputs])
 
-  const canCalculate =
-    Number.isFinite(parsed.currentCpc) &&
-    parsed.currentCpc > 0 &&
-    Number.isFinite(parsed.currentAcos) &&
-    parsed.currentAcos > 0 &&
-    Number.isFinite(parsed.targetAcos) &&
-    parsed.targetAcos > 0
-
-  const result = useMemo(
-    () => (canCalculate ? computeAcosRecommendation(parsed.currentCpc, parsed.currentAcos, parsed.targetAcos) : null),
-    [canCalculate, parsed.currentCpc, parsed.currentAcos, parsed.targetAcos]
+  const validationErrors = useMemo(
+    () => validateAcosInputs({ ...parsed, targetAcosPct: parsed.targetAcosPct }),
+    [parsed]
   )
 
-  const changeLabel =
-    result && result.percentChange !== 0
-      ? result.percentChange > 0
-        ? `Increase CPC by approximately ${result.percentChange.toFixed(1)}%`
-        : `Decrease CPC by approximately ${Math.abs(result.percentChange).toFixed(1)}%`
-      : null
+  const result = useMemo(() => {
+    if (validationErrors.length > 0) return null
+    return calculateSuggestedBid({ ...parsed, targetAcosPct: parsed.targetAcosPct })
+  }, [parsed, validationErrors.length])
+
+  const canCalculate = validationErrors.length === 0
 
   return (
     <div className="acos-tab">
       <section className="panel">
         <h2>ACOS Optimizer</h2>
         <p className="panel-desc">
-          Input your current CPC and ACOS along with your target ACOS. The suggested bid updates live as you type.
+          Enter Clicks, Orders, Selling Price, and Profit Per Unit. Profit Per Unit is your profit per sale before ads
+          — a single number, no cost breakdown. Suggested bid updates live.
         </p>
 
         <div className="acos-grid">
           <div className="acos-form">
             <div className="acos-field">
-              <label htmlFor="acos-current-cpc">
-                Current CPC
-                <span className="muted"> (e.g. 0.75)</span>
+              <label htmlFor="acos-clicks">Clicks</label>
+              <input
+                id="acos-clicks"
+                type="number"
+                step="1"
+                min="1"
+                value={inputs.clicks}
+                onChange={(e) => setInputs((prev) => ({ ...prev, clicks: e.target.value }))}
+              />
+            </div>
+
+            <div className="acos-field">
+              <label htmlFor="acos-orders">Orders</label>
+              <input
+                id="acos-orders"
+                type="number"
+                step="1"
+                min="0"
+                value={inputs.orders}
+                onChange={(e) => setInputs((prev) => ({ ...prev, orders: e.target.value }))}
+              />
+            </div>
+
+            <div className="acos-field">
+              <label htmlFor="acos-selling-price">
+                Selling Price
+                <span className="muted"> ($)</span>
               </label>
               <div className="acos-input-with-prefix">
                 <span className="acos-prefix">$</span>
                 <input
-                  id="acos-current-cpc"
+                  id="acos-selling-price"
                   type="number"
                   step="0.01"
                   min="0"
-                  value={inputs.currentCpc}
-                  onChange={(e) => setInputs((prev) => ({ ...prev, currentCpc: e.target.value }))}
+                  value={inputs.sellingPrice}
+                  onChange={(e) => setInputs((prev) => ({ ...prev, sellingPrice: e.target.value }))}
                 />
               </div>
             </div>
 
             <div className="acos-field">
-              <label htmlFor="acos-current-acos">
-                Current ACOS
-                <span className="muted"> (e.g. 45)</span>
+              <label htmlFor="acos-profit-per-unit">
+                Profit Per Unit
+                <span className="muted"> (before ads, $)</span>
               </label>
-              <div className="acos-input-with-suffix">
+              <div className="acos-input-with-prefix">
+                <span className="acos-prefix">$</span>
                 <input
-                  id="acos-current-acos"
+                  id="acos-profit-per-unit"
                   type="number"
-                  step="0.1"
+                  step="0.01"
                   min="0"
-                  value={inputs.currentAcos}
-                  onChange={(e) => setInputs((prev) => ({ ...prev, currentAcos: e.target.value }))}
+                  value={inputs.profitPerUnit}
+                  onChange={(e) => setInputs((prev) => ({ ...prev, profitPerUnit: e.target.value }))}
                 />
-                <span className="acos-suffix">%</span>
               </div>
             </div>
 
             <div className="acos-field">
               <label htmlFor="acos-target-acos">
                 Target ACOS
-                <span className="muted"> (e.g. 30)</span>
+                <span className="muted"> (%)</span>
               </label>
               <div className="acos-input-with-suffix">
                 <input
@@ -121,22 +129,43 @@ export function AcosPage() {
                 <span className="acos-suffix">%</span>
               </div>
             </div>
+
+            {validationErrors.length > 0 && (
+              <div className="acos-validation">
+                {validationErrors.map((e) => (
+                  <p key={e.field} className="acos-validation-error">
+                    {e.message}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="acos-result">
             <h3>Suggested bid</h3>
             {result ? (
               <>
-                <p className="acos-result-main">
-                  Recommended CPC:{' '}
-                  <strong>${result.recommendedCpc.toFixed(2)}</strong>{' '}
-                  <span className="muted">(from ${parsed.currentCpc.toFixed(2)})</span>
-                </p>
-                {changeLabel && <p className="acos-result-change">{changeLabel}</p>}
-                <p className="muted">
-                  Rule of thumb: if your conversion rate and average order value stay similar, ACOS moves roughly in
-                  proportion to CPC. This recommendation scales your bid from your current ACOS toward your target ACOS.
-                </p>
+                <div className="acos-result-grid">
+                  <p>
+                    <span className="acos-result-label">CVR</span>
+                    <strong>{(result.cvr * 100).toFixed(2)}%</strong>
+                  </p>
+                  <p>
+                    <span className="acos-result-label">Max CPC (ACOS)</span>
+                    <strong>${result.maxCpcAcos.toFixed(2)}</strong>
+                  </p>
+                  <p>
+                    <span className="acos-result-label">Max CPC (Profit)</span>
+                    <strong>${result.maxCpcProfit.toFixed(2)}</strong>
+                  </p>
+                  <p className="acos-result-final">
+                    <span className="acos-result-label">Suggested Bid</span>
+                    <strong>${result.suggestedBid.toFixed(2)}</strong>
+                  </p>
+                </div>
+                {result.lowDataApplied && (
+                  <p className="acos-low-data">Low data protection applied (clicks &lt; 20): bid reduced by 30%.</p>
+                )}
               </>
             ) : (
               <p className="muted">Enter values on the left — the suggested bid updates live as you type.</p>
@@ -147,4 +176,3 @@ export function AcosPage() {
     </div>
   )
 }
-

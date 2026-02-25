@@ -107,26 +107,46 @@ app.put('/api/active-profile-id', async (req, res) => {
 
 app.post('/api/acos/recommendation', async (req, res) => {
   try {
-    const { currentCpc, currentAcos, targetAcos } = req.body ?? {}
+    const { clicks, orders, sellingPrice, profitPerUnit, targetAcosPct } = req.body ?? {}
 
-    const cpc = Number(currentCpc)
-    const current = Number(currentAcos)
-    const target = Number(targetAcos)
+    const clicksNum = Number(clicks)
+    const ordersNum = Number(orders)
+    const sellingPriceNum = Number(sellingPrice)
+    const profitPerUnitNum = Number(profitPerUnit)
+    const targetNum = Number(targetAcosPct)
 
-    if (!Number.isFinite(cpc) || !Number.isFinite(current) || !Number.isFinite(target)) {
-      return res.status(400).json({ error: 'All inputs must be numbers.' })
+    if (!Number.isFinite(clicksNum) || clicksNum <= 0) {
+      return res.status(400).json({ error: 'Clicks must be greater than 0.' })
     }
-    if (cpc <= 0 || current <= 0 || target <= 0) {
-      return res.status(400).json({ error: 'All inputs must be greater than zero.' })
+    if (!Number.isFinite(ordersNum) || ordersNum < 0) {
+      return res.status(400).json({ error: 'Orders must be 0 or greater.' })
+    }
+    if (ordersNum > clicksNum) {
+      return res.status(400).json({ error: 'Orders cannot exceed Clicks.' })
+    }
+    if (!Number.isFinite(sellingPriceNum) || sellingPriceNum <= 0) {
+      return res.status(400).json({ error: 'Selling Price must be greater than 0.' })
+    }
+    if (!Number.isFinite(profitPerUnitNum) || profitPerUnitNum <= 0) {
+      return res.status(400).json({ error: 'Profit Per Unit must be greater than 0.' })
+    }
+    if (!Number.isFinite(targetNum) || targetNum <= 0) {
+      return res.status(400).json({ error: 'Target ACOS must be greater than 0.' })
     }
 
-    const ratio = target / current
-    const recommendedCpc = cpc * ratio
-    const percentChange = ((recommendedCpc - cpc) / cpc) * 100
+    const cvr = ordersNum / clicksNum
+    const maxCpcAcos = (targetNum / 100) * sellingPriceNum * cvr
+    const maxCpcProfit = profitPerUnitNum * cvr
+    let suggestedBid = Math.min(maxCpcAcos, maxCpcProfit)
+    const lowDataApplied = clicksNum < 20
+    if (lowDataApplied) suggestedBid *= 0.7
 
     res.json({
-      recommendedCpc: Number(recommendedCpc.toFixed(4)),
-      percentChange: Number(percentChange.toFixed(2)),
+      cvr: Math.round(cvr * 10000) / 10000,
+      maxCpcAcos: Math.round(maxCpcAcos * 100) / 100,
+      maxCpcProfit: Math.round(maxCpcProfit * 100) / 100,
+      suggestedBid: Math.round(suggestedBid * 100) / 100,
+      lowDataApplied,
     })
   } catch (e) {
     console.error('POST /api/acos/recommendation', e)
