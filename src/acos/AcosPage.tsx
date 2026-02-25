@@ -60,7 +60,7 @@ export function AcosPage() {
   const [inputs, setInputs] = useState<AcosInputs>({
     currentCpc: '',
     currentAcos: '',
-    targetAcos: '',
+    targetAcos: '35',
   })
   const [result, setResult] = useState<AcosResult | null>(null)
   const [error, setError] = useState<string | null>(null)
