@@ -12,6 +12,9 @@ export interface AcosCalculatorInputs {
   asp: number
   currentBid?: number
   useCurrentBidForCaps?: boolean
+  topOfSearchClicks?: number
+  topOfSearchOrders?: number
+  placementAwareEnabled?: boolean
 }
 
 export interface AcosCalculatorResult {
@@ -22,6 +25,10 @@ export interface AcosCalculatorResult {
   suggestedBidFinal: number
   suggestedAfterConfidence: number
   capStatus: 'none' | 'decrease' | 'increase'
+  /** Only when placement-aware enabled */
+  blendedCvr?: number
+  topCvr?: number
+  adjustedCvr?: number
 }
 
 export interface AcosValidationError {
@@ -97,15 +104,38 @@ export function calculateSuggestedBid(inputs: AcosCalculatorInputs): AcosCalcula
   if (errors.length > 0) return null
 
   const { currentCpc, currentAcos, targetAcos, clicks, orders, asp } = inputs
+  const placementAware = inputs.placementAwareEnabled === true
 
   // Cap baseline: CurrentBid if toggle on and valid, else CurrentCPC
   const useBid = inputs.useCurrentBidForCaps && Number.isFinite(inputs.currentBid) && (inputs.currentBid ?? 0) > 0
   const capBaseline = useBid ? (inputs.currentBid as number) : currentCpc
 
-  // Step 1: CVR (if Orders == 0, CVR = 0)
-  const cvr = clicks > 0 ? orders / clicks : 0
+  // Step 1: Blended CVR (if Orders == 0, CVR = 0)
+  const blendedCvr = clicks > 0 ? orders / clicks : 0
 
-  // Step 2: Value-based Max CPC
+  // Placement-aware: compute AdjustedCVR when Top of Search converts better
+  let cvr = blendedCvr
+  let blendedCvrOut: number | undefined
+  let topCvrOut: number | undefined
+  let adjustedCvrOut: number | undefined
+
+  if (placementAware) {
+    blendedCvrOut = blendedCvr
+    const topClicks = Number(inputs.topOfSearchClicks) || 0
+    const topOrders = Number(inputs.topOfSearchOrders) || 0
+    const topCvr = topClicks > 0 ? topOrders / topClicks : blendedCvr
+    topCvrOut = topCvr
+
+    if (topCvr > blendedCvr && blendedCvr > 0) {
+      const cvrLift = Math.min(topCvr / blendedCvr, 2.0)
+      cvr = blendedCvr * (0.5 + 0.5 * cvrLift)
+      adjustedCvrOut = cvr
+    } else {
+      adjustedCvrOut = blendedCvr
+    }
+  }
+
+  // Step 2: Value-based Max CPC (uses cvr = blended or adjusted)
   const maxCpcValue = (targetAcos / 100) * asp * cvr
 
   // Step 3: ACOS-correction CPC
@@ -153,5 +183,10 @@ export function calculateSuggestedBid(inputs: AcosCalculatorInputs): AcosCalcula
     suggestedBidFinal: round2(suggestedBidFinal),
     suggestedAfterConfidence: round2(suggestedAfterConfidence),
     capStatus,
+    ...(placementAware && {
+      blendedCvr: blendedCvrOut != null ? round4(blendedCvrOut) : undefined,
+      topCvr: topCvrOut != null ? round4(topCvrOut) : undefined,
+      adjustedCvr: adjustedCvrOut != null ? round4(adjustedCvrOut) : undefined,
+    }),
   }
 }

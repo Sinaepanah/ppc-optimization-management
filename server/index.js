@@ -107,7 +107,7 @@ app.put('/api/active-profile-id', async (req, res) => {
 
 app.post('/api/acos/recommendation', async (req, res) => {
   try {
-    const { currentCpc, currentAcos, targetAcos, clicks, orders, asp } = req.body ?? {}
+    const { currentCpc, currentAcos, targetAcos, clicks, orders, asp, topOfSearchClicks, topOfSearchOrders, placementAwareEnabled } = req.body ?? {}
 
     const cpc = Number(currentCpc)
     const current = Number(currentAcos)
@@ -138,7 +138,16 @@ app.post('/api/acos/recommendation', async (req, res) => {
       return res.status(400).json({ error: 'Average Selling Price must be greater than 0.' })
     }
 
-    const cvr = ordersNum / clicksNum
+    let cvr = ordersNum / clicksNum
+    if (placementAwareEnabled) {
+      const topClicks = Number(topOfSearchClicks) || 0
+      const topOrders = Number(topOfSearchOrders) || 0
+      const topCvr = topClicks > 0 ? topOrders / topClicks : cvr
+      if (topCvr > cvr && cvr > 0) {
+        const cvrLift = Math.min(topCvr / cvr, 2.0)
+        cvr = cvr * (0.5 + 0.5 * cvrLift)
+      }
+    }
     const maxCpcValue = (target / 100) * aspNum * cvr
     const cpcAcosAdjusted = cpc * (target / current)
     const suggestedCore = Math.min(maxCpcValue, cpcAcosAdjusted)

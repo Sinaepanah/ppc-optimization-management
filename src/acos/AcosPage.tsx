@@ -9,6 +9,8 @@ interface AcosInputs {
   orders: string
   asp: string
   currentBid: string
+  topOfSearchClicks: string
+  topOfSearchOrders: string
 }
 
 export function AcosPage() {
@@ -20,8 +22,12 @@ export function AcosPage() {
     orders: '',
     asp: '35',
     currentBid: '',
+    topOfSearchClicks: '',
+    topOfSearchOrders: '',
   })
   const [useCurrentBidForCaps, setUseCurrentBidForCaps] = useState(false)
+  const [placementAwareEnabled, setPlacementAwareEnabled] = useState(false)
+  const [placementSectionOpen, setPlacementSectionOpen] = useState(false)
 
   const parsed = useMemo(() => {
     const parse = (s: string) => parseFloat(String(s).replace(',', '.')) || 0
@@ -33,6 +39,8 @@ export function AcosPage() {
       orders: parse(inputs.orders),
       asp: parse(inputs.asp),
       currentBid: parse(inputs.currentBid),
+      topOfSearchClicks: parse(inputs.topOfSearchClicks),
+      topOfSearchOrders: parse(inputs.topOfSearchOrders),
     }
   }, [inputs])
 
@@ -40,8 +48,12 @@ export function AcosPage() {
 
   const result = useMemo(() => {
     if (validationErrors.length > 0) return null
-    return calculateSuggestedBid({ ...parsed, useCurrentBidForCaps })
-  }, [parsed, useCurrentBidForCaps, validationErrors.length])
+    return calculateSuggestedBid({
+      ...parsed,
+      useCurrentBidForCaps,
+      placementAwareEnabled,
+    })
+  }, [parsed, useCurrentBidForCaps, placementAwareEnabled, validationErrors.length])
 
   return (
     <div className="acos-tab">
@@ -161,6 +173,51 @@ export function AcosPage() {
               </div>
             </div>
 
+            <div className="acos-collapsible">
+              <button
+                type="button"
+                className="acos-collapsible-trigger"
+                onClick={() => setPlacementSectionOpen((o) => !o)}
+                aria-expanded={placementSectionOpen}
+              >
+                {placementSectionOpen ? '▼' : '▶'} Placement Performance (Optional)
+              </button>
+              {placementSectionOpen && (
+                <div className="acos-collapsible-content">
+                  <div className="acos-field">
+                    <label htmlFor="acos-top-clicks">Top of Search Clicks</label>
+                    <input
+                      id="acos-top-clicks"
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={inputs.topOfSearchClicks}
+                      onChange={(e) => setInputs((prev) => ({ ...prev, topOfSearchClicks: e.target.value }))}
+                    />
+                  </div>
+                  <div className="acos-field">
+                    <label htmlFor="acos-top-orders">Top of Search Orders</label>
+                    <input
+                      id="acos-top-orders"
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={inputs.topOfSearchOrders}
+                      onChange={(e) => setInputs((prev) => ({ ...prev, topOfSearchOrders: e.target.value }))}
+                    />
+                  </div>
+                  <label className="acos-toggle">
+                    <input
+                      type="checkbox"
+                      checked={placementAwareEnabled}
+                      onChange={(e) => setPlacementAwareEnabled(e.target.checked)}
+                    />
+                    Enable placement-aware bid expansion
+                  </label>
+                </div>
+              )}
+            </div>
+
             {validationErrors.length > 0 && (
               <div className="acos-validation">
                 {validationErrors.map((e) => (
@@ -186,10 +243,27 @@ export function AcosPage() {
                 </p>
                 <div className="acos-calculation-details">
                   <h4>Calculation details</h4>
-                  <p>
-                    <span className="acos-result-label">CVR</span>
-                    <strong>{(result.cvr * 100).toFixed(2)}%</strong>
-                  </p>
+                  {placementAwareEnabled && result.blendedCvr != null ? (
+                    <>
+                      <p>
+                        <span className="acos-result-label">Blended CVR</span>
+                        <strong>{(result.blendedCvr * 100).toFixed(2)}%</strong>
+                      </p>
+                      <p>
+                        <span className="acos-result-label">Top-of-Search CVR</span>
+                        <strong>{(result.topCvr != null ? result.topCvr * 100 : 0).toFixed(2)}%</strong>
+                      </p>
+                      <p>
+                        <span className="acos-result-label">Adjusted CVR</span>
+                        <strong>{(result.adjustedCvr != null ? result.adjustedCvr * 100 : result.cvr * 100).toFixed(2)}%</strong>
+                      </p>
+                    </>
+                  ) : (
+                    <p>
+                      <span className="acos-result-label">CVR</span>
+                      <strong>{(result.cvr * 100).toFixed(2)}%</strong>
+                    </p>
+                  )}
                   <p>
                     <span className="acos-result-label">Max CPC (Value)</span>
                     <strong>${result.maxCpcValue.toFixed(2)}</strong>
