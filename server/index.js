@@ -107,14 +107,24 @@ app.put('/api/active-profile-id', async (req, res) => {
 
 app.post('/api/acos/recommendation', async (req, res) => {
   try {
-    const { clicks, orders, sellingPrice, profitPerUnit, targetAcosPct } = req.body ?? {}
+    const { currentCpc, currentAcos, targetAcos, clicks, orders, asp } = req.body ?? {}
 
+    const cpc = Number(currentCpc)
+    const current = Number(currentAcos)
+    const target = Number(targetAcos)
     const clicksNum = Number(clicks)
     const ordersNum = Number(orders)
-    const sellingPriceNum = Number(sellingPrice)
-    const profitPerUnitNum = Number(profitPerUnit)
-    const targetNum = Number(targetAcosPct)
+    const aspNum = Number(asp)
 
+    if (!Number.isFinite(cpc) || cpc <= 0) {
+      return res.status(400).json({ error: 'Current CPC must be greater than 0.' })
+    }
+    if (!Number.isFinite(current) || current <= 0) {
+      return res.status(400).json({ error: 'Current ACOS must be greater than 0.' })
+    }
+    if (!Number.isFinite(target) || target <= 0) {
+      return res.status(400).json({ error: 'Target ACOS must be greater than 0.' })
+    }
     if (!Number.isFinite(clicksNum) || clicksNum <= 0) {
       return res.status(400).json({ error: 'Clicks must be greater than 0.' })
     }
@@ -124,29 +134,50 @@ app.post('/api/acos/recommendation', async (req, res) => {
     if (ordersNum > clicksNum) {
       return res.status(400).json({ error: 'Orders cannot exceed Clicks.' })
     }
-    if (!Number.isFinite(sellingPriceNum) || sellingPriceNum <= 0) {
-      return res.status(400).json({ error: 'Selling Price must be greater than 0.' })
-    }
-    if (!Number.isFinite(profitPerUnitNum) || profitPerUnitNum <= 0) {
-      return res.status(400).json({ error: 'Profit Per Unit must be greater than 0.' })
-    }
-    if (!Number.isFinite(targetNum) || targetNum <= 0) {
-      return res.status(400).json({ error: 'Target ACOS must be greater than 0.' })
+    if (!Number.isFinite(aspNum) || aspNum <= 0) {
+      return res.status(400).json({ error: 'Average Selling Price must be greater than 0.' })
     }
 
     const cvr = ordersNum / clicksNum
-    const maxCpcAcos = (targetNum / 100) * sellingPriceNum * cvr
-    const maxCpcProfit = profitPerUnitNum * cvr
-    let suggestedBid = Math.min(maxCpcAcos, maxCpcProfit)
-    const lowDataApplied = clicksNum < 20
-    if (lowDataApplied) suggestedBid *= 0.7
+    const maxCpcValue = (target / 100) * aspNum * cvr
+    const cpcAcosAdjusted = cpc * (target / current)
+    const suggestedCore = Math.min(maxCpcValue, cpcAcosAdjusted)
+
+    let confidenceFactor
+    if (clicksNum < 10) confidenceFactor = 0.2
+    else if (clicksNum < 30) confidenceFactor = 0.5
+    else if (clicksNum < 60) confidenceFactor = 0.75
+    else confidenceFactor = 1.0
+
+    const suggestedAfterConfidence = cpc * (1 - confidenceFactor) + suggestedCore * confidenceFactor
+
+    const acosRatio = target > 0 ? current / target : 1
+    let maxDecrease
+    if (acosRatio >= 5) maxDecrease = 0.6
+    else if (acosRatio >= 3) maxDecrease = 0.5
+    else if (acosRatio >= 2) maxDecrease = 0.4
+    else maxDecrease = 0.3
+    const capBaseline = cpc
+    const lowerBound = capBaseline * (1 - maxDecrease)
+    const upperBound = capBaseline * 1.25
+
+    let suggestedBidFinal = suggestedAfterConfidence
+    let capStatus = 'none'
+    if (suggestedAfterConfidence < lowerBound) {
+      suggestedBidFinal = lowerBound
+      capStatus = 'decrease'
+    } else if (suggestedAfterConfidence > upperBound) {
+      suggestedBidFinal = upperBound
+      capStatus = 'increase'
+    }
 
     res.json({
       cvr: Math.round(cvr * 10000) / 10000,
-      maxCpcAcos: Math.round(maxCpcAcos * 100) / 100,
-      maxCpcProfit: Math.round(maxCpcProfit * 100) / 100,
-      suggestedBid: Math.round(suggestedBid * 100) / 100,
-      lowDataApplied,
+      maxCpcValue: Math.round(maxCpcValue * 100) / 100,
+      cpcAcosAdjusted: Math.round(cpcAcosAdjusted * 100) / 100,
+      suggestedCore: Math.round(suggestedCore * 100) / 100,
+      suggestedBidFinal: Math.round(suggestedBidFinal * 100) / 100,
+      capStatus,
     })
   } catch (e) {
     console.error('POST /api/acos/recommendation', e)
