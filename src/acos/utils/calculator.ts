@@ -17,6 +17,9 @@ export interface AcosCalculatorInputs {
   placementAwareEnabled?: boolean
 }
 
+export type ClassificationStatus = 'Profitable & Scalable' | 'Stable' | 'Weak' | 'Losing'
+export type ConfidenceLevel = 'Low' | 'Medium' | 'High' | 'Full'
+
 export interface AcosCalculatorResult {
   cvr: number
   maxCpcValue: number
@@ -25,6 +28,11 @@ export interface AcosCalculatorResult {
   suggestedBidFinal: number
   suggestedAfterConfidence: number
   capStatus: 'none' | 'decrease' | 'increase'
+  status: ClassificationStatus
+  placementAdvantage: boolean
+  recommendedBaseAdjustment: string
+  recommendedPlacementAction: string
+  confidenceLevel: ConfidenceLevel
   /** Only when placement-aware enabled */
   blendedCvr?: number
   topCvr?: number
@@ -78,6 +86,55 @@ function getMaxDecrease(acosRatio: number): number {
 }
 
 /**
+ * Get classification status from ACOS ratio.
+ */
+function getClassificationStatus(acosRatio: number): ClassificationStatus {
+  if (acosRatio <= 0.7) return 'Profitable & Scalable'
+  if (acosRatio <= 1.2) return 'Stable'
+  if (acosRatio <= 2) return 'Weak'
+  return 'Losing'
+}
+
+/**
+ * Get confidence level from click volume.
+ */
+function getConfidenceLevel(clicks: number): ConfidenceLevel {
+  if (clicks < 10) return 'Low'
+  if (clicks < 30) return 'Medium'
+  if (clicks < 60) return 'High'
+  return 'Full'
+}
+
+/**
+ * Get action engine recommendations from status and placement advantage.
+ */
+function getActionRecommendations(
+  status: ClassificationStatus,
+  placementAdvantage: boolean
+): { recommendedBaseAdjustment: string; recommendedPlacementAction: string } {
+  switch (status) {
+    case 'Profitable & Scalable':
+      return placementAdvantage
+        ? { recommendedBaseAdjustment: '+15%', recommendedPlacementAction: 'Increase Top-of-Search multiplier' }
+        : { recommendedBaseAdjustment: '+10%', recommendedPlacementAction: 'Monitor marginal ACOS' }
+    case 'Stable':
+      return placementAdvantage
+        ? { recommendedBaseAdjustment: '±10% max', recommendedPlacementAction: 'Shift exposure toward Top-of-Search' }
+        : { recommendedBaseAdjustment: '±10% max', recommendedPlacementAction: 'Maintain bid' }
+    case 'Weak':
+      return placementAdvantage
+        ? { recommendedBaseAdjustment: '-15% to -30%', recommendedPlacementAction: 'Increase profitable placement exposure cautiously' }
+        : { recommendedBaseAdjustment: '-30%', recommendedPlacementAction: 'Reduce base bid' }
+    case 'Losing':
+      return placementAdvantage
+        ? { recommendedBaseAdjustment: '-30% to -40%', recommendedPlacementAction: 'Increase profitable placement multiplier, reduce base bid' }
+        : { recommendedBaseAdjustment: '-40% to -60%', recommendedPlacementAction: 'Reduce bid significantly' }
+    default:
+      return { recommendedBaseAdjustment: '—', recommendedPlacementAction: '—' }
+  }
+}
+
+/**
  * Calculates suggested bid.
  *
  * Core:
@@ -119,14 +176,16 @@ export function calculateSuggestedBid(inputs: AcosCalculatorInputs): AcosCalcula
   let topCvrOut: number | undefined
   let adjustedCvrOut: number | undefined
 
+  let placementAdvantage = false
   if (placementAware) {
     blendedCvrOut = blendedCvr
     const topClicks = Number(inputs.topOfSearchClicks) || 0
     const topOrders = Number(inputs.topOfSearchOrders) || 0
-    const topCvr = topClicks > 0 ? topOrders / topClicks : blendedCvr
-    topCvrOut = topCvr
+    const topCvr = topClicks > 0 ? topOrders / topClicks : 0
+    topCvrOut = topClicks > 0 ? topCvr : 0
+    placementAdvantage = topCvr > blendedCvr && blendedCvr > 0
 
-    if (topCvr > blendedCvr && blendedCvr > 0) {
+    if (placementAdvantage) {
       const cvrLift = Math.min(topCvr / blendedCvr, 2.0)
       cvr = blendedCvr * (0.5 + 0.5 * cvrLift)
       adjustedCvrOut = cvr
@@ -175,6 +234,10 @@ export function calculateSuggestedBid(inputs: AcosCalculatorInputs): AcosCalcula
   const round2 = (n: number) => (Number.isFinite(n) ? Math.round(n * 100) / 100 : 0)
   const round4 = (n: number) => (Number.isFinite(n) ? Math.round(n * 10000) / 10000 : 0)
 
+  const status = getClassificationStatus(acosRatio)
+  const confidenceLevel = getConfidenceLevel(clicks)
+  const { recommendedBaseAdjustment, recommendedPlacementAction } = getActionRecommendations(status, placementAdvantage)
+
   return {
     cvr: round4(cvr),
     maxCpcValue: round2(maxCpcValue),
@@ -183,6 +246,11 @@ export function calculateSuggestedBid(inputs: AcosCalculatorInputs): AcosCalcula
     suggestedBidFinal: round2(suggestedBidFinal),
     suggestedAfterConfidence: round2(suggestedAfterConfidence),
     capStatus,
+    status,
+    placementAdvantage,
+    recommendedBaseAdjustment,
+    recommendedPlacementAction,
+    confidenceLevel,
     ...(placementAware && {
       blendedCvr: blendedCvrOut != null ? round4(blendedCvrOut) : undefined,
       topCvr: topCvrOut != null ? round4(topCvrOut) : undefined,

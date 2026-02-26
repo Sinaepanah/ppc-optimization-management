@@ -58,9 +58,9 @@ export function AcosPage() {
   return (
     <div className="acos-tab">
       <section className="panel">
-        <h2>ACOS Optimizer</h2>
+        <h2>Profit-Weighted Placement Bid Engine</h2>
         <p className="panel-desc">
-          Enter your campaign metrics. Suggested bid updates live. All values are available from Amazon reports.
+          Maximize profitable sales using Amazon dataset inputs. Enter your metrics — suggested bid and recommendations update live.
         </p>
 
         <div className="acos-grid">
@@ -241,6 +241,31 @@ export function AcosPage() {
                     </span>
                   )}
                 </p>
+                <div className="acos-decision-summary">
+                  <h4>Decision summary</h4>
+                  <p>
+                    <span className="acos-result-label">Classification</span>
+                    <strong className={`acos-status acos-status--${result.status === 'Profitable & Scalable' ? 'profitable' : result.status.toLowerCase()}`}>
+                      {result.status}
+                    </strong>
+                  </p>
+                  <p>
+                    <span className="acos-result-label">Economic Max CPC</span>
+                    <strong>${result.maxCpcValue.toFixed(2)}</strong>
+                  </p>
+                  <p>
+                    <span className="acos-result-label">Recommended base adjustment</span>
+                    <strong>{result.recommendedBaseAdjustment}</strong>
+                  </p>
+                  <p>
+                    <span className="acos-result-label">Placement action</span>
+                    <strong>{result.recommendedPlacementAction}</strong>
+                  </p>
+                  <p>
+                    <span className="acos-result-label">Confidence level</span>
+                    <strong>{result.confidenceLevel}</strong>
+                  </p>
+                </div>
                 <div className="acos-calculation-details">
                   <h4>Calculation details</h4>
                   {placementAwareEnabled && result.blendedCvr != null ? (

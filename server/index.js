@@ -138,14 +138,17 @@ app.post('/api/acos/recommendation', async (req, res) => {
       return res.status(400).json({ error: 'Average Selling Price must be greater than 0.' })
     }
 
-    let cvr = ordersNum / clicksNum
+    const blendedCvr = ordersNum / clicksNum
+    let cvr = blendedCvr
+    let placementAdvantage = false
     if (placementAwareEnabled) {
       const topClicks = Number(topOfSearchClicks) || 0
       const topOrders = Number(topOfSearchOrders) || 0
-      const topCvr = topClicks > 0 ? topOrders / topClicks : cvr
-      if (topCvr > cvr && cvr > 0) {
-        const cvrLift = Math.min(topCvr / cvr, 2.0)
-        cvr = cvr * (0.5 + 0.5 * cvrLift)
+      const topCvr = topClicks > 0 ? topOrders / topClicks : 0
+      placementAdvantage = topCvr > blendedCvr && blendedCvr > 0
+      if (placementAdvantage) {
+        const cvrLift = Math.min(topCvr / blendedCvr, 2.0)
+        cvr = blendedCvr * (0.5 + 0.5 * cvrLift)
       }
     }
     const maxCpcValue = (target / 100) * aspNum * cvr
@@ -180,6 +183,26 @@ app.post('/api/acos/recommendation', async (req, res) => {
       capStatus = 'increase'
     }
 
+    let status, recommendedBaseAdjustment, recommendedPlacementAction
+    if (acosRatio <= 0.7) {
+      status = 'Profitable & Scalable'
+      recommendedBaseAdjustment = placementAdvantage ? '+15%' : '+10%'
+      recommendedPlacementAction = placementAdvantage ? 'Increase Top-of-Search multiplier' : 'Monitor marginal ACOS'
+    } else if (acosRatio <= 1.2) {
+      status = 'Stable'
+      recommendedBaseAdjustment = '±10% max'
+      recommendedPlacementAction = placementAdvantage ? 'Shift exposure toward Top-of-Search' : 'Maintain bid'
+    } else if (acosRatio <= 2) {
+      status = 'Weak'
+      recommendedBaseAdjustment = placementAdvantage ? '-15% to -30%' : '-30%'
+      recommendedPlacementAction = placementAdvantage ? 'Increase profitable placement exposure cautiously' : 'Reduce base bid'
+    } else {
+      status = 'Losing'
+      recommendedBaseAdjustment = placementAdvantage ? '-30% to -40%' : '-40% to -60%'
+      recommendedPlacementAction = placementAdvantage ? 'Increase profitable placement multiplier, reduce base bid' : 'Reduce bid significantly'
+    }
+    const confidenceLevel = clicksNum < 10 ? 'Low' : clicksNum < 30 ? 'Medium' : clicksNum < 60 ? 'High' : 'Full'
+
     res.json({
       cvr: Math.round(cvr * 10000) / 10000,
       maxCpcValue: Math.round(maxCpcValue * 100) / 100,
@@ -187,6 +210,11 @@ app.post('/api/acos/recommendation', async (req, res) => {
       suggestedCore: Math.round(suggestedCore * 100) / 100,
       suggestedBidFinal: Math.round(suggestedBidFinal * 100) / 100,
       capStatus,
+      status,
+      placementAdvantage,
+      recommendedBaseAdjustment,
+      recommendedPlacementAction,
+      confidenceLevel,
     })
   } catch (e) {
     console.error('POST /api/acos/recommendation', e)
