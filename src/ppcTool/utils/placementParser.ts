@@ -49,10 +49,11 @@ function fixOcrNumber(raw: string): string {
   return s
 }
 
+/** Accept $ or £ from Amazon US/UK; normalize to $ for internal use */
 function fixOcrCurrency(raw: string): string {
   let s = raw.trim().replace(/\s/g, '')
   if (EMPTY.test(s)) return ''
-  const m = s.match(/\$?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\d+\.?\d*)/)
+  const m = s.match(/[\$£]?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\d+\.?\d*)/)
   if (!m) return s
   let num = m[1].replace(/,/g, '')
   if (/^\d{3,6}$/.test(num) && !num.includes('.')) {
@@ -130,7 +131,7 @@ function identifyPlacementType(rowWords: TsvWord[]): 'top' | 'rest' | 'product' 
       /^\d+%$/.test(t) ||
       /^[\d,]+$/.test(t) ||
       /^\d+$/.test(t) ||
-      /^\$[\d,.]+$/.test(t) ||
+      /^[\$£][\d,.]+$/.test(t) ||
       /^[\d.]+%$/.test(t) ||
       EMPTY.test(t)
     ) {
@@ -150,7 +151,7 @@ function identifyPlacementType(rowWords: TsvWord[]): 'top' | 'rest' | 'product' 
 function isDataRow(words: TsvWord[]): boolean {
   return words.some(
     (w) =>
-      /^\$[\d,.]+$/.test(w.text) ||
+      /^[\$£][\d,.]+$/.test(w.text) ||
       /^[\d,]+$/.test(w.text) ||
       /^\d+%$/.test(w.text) ||
       /^[\d.]+%$/.test(w.text) ||
@@ -163,7 +164,7 @@ function isDataRow(words: TsvWord[]): boolean {
 function isHeaderRow(words: TsvWord[]): boolean {
   const hasData = words.some(
     (w) =>
-      /^\$[\d,.]+$/.test(w.text) ||
+      /^[\$£][\d,.]+$/.test(w.text) ||
       /^[\d,]+$/.test(w.text) ||
       /^\d+%$/.test(w.text) ||
       /^[\d.]+%$/.test(w.text) ||
@@ -187,7 +188,7 @@ function extractRowByPosition(words: TsvWord[]): Partial<PlacementRow> {
       /^\d+%$/.test(t) ||
       /^[\d,]+$/.test(t) ||
       /^\d+$/.test(t) ||
-      /^\$[\d,.]+$/.test(t) ||
+      /^[\$£][\d,.]+$/.test(t) ||
       EMPTY.test(t) ||
       /^[\d.]+%$/.test(t)
     ) {
@@ -231,12 +232,12 @@ function extractRowByPosition(words: TsvWord[]): Partial<PlacementRow> {
       continue
     }
 
-    if (!row.totalCost && (EMPTY.test(v) || /^\$[\d,.]+$/.test(v))) {
+    if (!row.totalCost && (EMPTY.test(v) || /^[\$£][\d,.]+$/.test(v))) {
       row.totalCost = EMPTY.test(v) ? '' : fixOcrCurrency(v)
       continue
     }
 
-    if (!row.cpc && (EMPTY.test(v) || /^\$[\d.]+$/.test(v))) {
+    if (!row.cpc && (EMPTY.test(v) || /^[\$£][\d.]+$/.test(v))) {
       row.cpc = EMPTY.test(v) ? '' : fixOcrCurrency(v)
       continue
     }
@@ -246,7 +247,7 @@ function extractRowByPosition(words: TsvWord[]): Partial<PlacementRow> {
       continue
     }
 
-    if (!row.sales && (EMPTY.test(v) || /^\$[\d,.]+$/.test(v))) {
+    if (!row.sales && (EMPTY.test(v) || /^[\$£][\d,.]+$/.test(v))) {
       row.sales = EMPTY.test(v) ? '' : fixOcrCurrency(v)
       continue
     }
@@ -278,10 +279,10 @@ function extractRowByPattern(words: TsvWord[]): Partial<PlacementRow> {
     { key: 'impressions', test: (s) => EMPTY.test(s) || /^[\d,]+$/.test(s) || /^\d+$/.test(s), fix: fixOcrNumber },
     { key: 'clicks', test: (s) => EMPTY.test(s) || /^\d+$/.test(s) },
     { key: 'ctr', test: (s) => EMPTY.test(s) || /^[\d.]+%$/.test(s), fix: fixOcrPercent },
-    { key: 'totalCost', test: (s) => EMPTY.test(s) || /^\$[\d,.]+$/.test(s), fix: fixOcrCurrency },
-    { key: 'cpc', test: (s) => EMPTY.test(s) || /^\$[\d.]+$/.test(s), fix: fixOcrCurrency },
+    { key: 'totalCost', test: (s) => EMPTY.test(s) || /^[\$£][\d,.]+$/.test(s), fix: fixOcrCurrency },
+    { key: 'cpc', test: (s) => EMPTY.test(s) || /^[\$£][\d.]+$/.test(s), fix: fixOcrCurrency },
     { key: 'purchases', test: (s) => EMPTY.test(s) || /^\d+$/.test(s) },
-    { key: 'sales', test: (s) => EMPTY.test(s) || /^\$[\d,.]+$/.test(s), fix: fixOcrCurrency },
+    { key: 'sales', test: (s) => EMPTY.test(s) || /^[\$£][\d,.]+$/.test(s), fix: fixOcrCurrency },
     { key: 'acos', test: (s) => EMPTY.test(s) || /%$/.test(s) || /^\d+\.?\d*$/.test(s), fix: fixOcrPercent },
   ]
 
@@ -436,10 +437,10 @@ function parsePlacementFromText(text: string): ExtractedPlacementData | null {
       else if (!row.impressions && (/^[\d,]+$/.test(t) || /^\d+$/.test(t)) && !EMPTY.test(t)) row.impressions = fixOcrNumber(t)
       else if (!row.clicks && (/^\d+$/.test(t) || EMPTY.test(t))) row.clicks = EMPTY.test(t) ? '' : t
       else if (!row.ctr && (/^[\d.]+%$/.test(t) || EMPTY.test(t))) row.ctr = EMPTY.test(t) ? '' : fixOcrPercent(t)
-      else if (!row.totalCost && (/^\$[\d,.]+$/.test(t) || EMPTY.test(t))) row.totalCost = EMPTY.test(t) ? '' : fixOcrCurrency(t)
-      else if (!row.cpc && (/^\$[\d.]+$/.test(t) || EMPTY.test(t))) row.cpc = EMPTY.test(t) ? '' : fixOcrCurrency(t)
+      else if (!row.totalCost && (/^[\$£][\d,.]+$/.test(t) || EMPTY.test(t))) row.totalCost = EMPTY.test(t) ? '' : fixOcrCurrency(t)
+      else if (!row.cpc && (/^[\$£][\d.]+$/.test(t) || EMPTY.test(t))) row.cpc = EMPTY.test(t) ? '' : fixOcrCurrency(t)
       else if (!row.purchases && (/^\d+$/.test(t) || EMPTY.test(t))) row.purchases = EMPTY.test(t) ? '' : t
-      else if (!row.sales && (/^\$[\d,.]+$/.test(t) || EMPTY.test(t))) row.sales = EMPTY.test(t) ? '' : fixOcrCurrency(t)
+      else if (!row.sales && (/^[\$£][\d,.]+$/.test(t) || EMPTY.test(t))) row.sales = EMPTY.test(t) ? '' : fixOcrCurrency(t)
       else if (!row.acos && (/%$/.test(t) || /^\d+\.?\d*$/.test(t) || EMPTY.test(t))) row.acos = EMPTY.test(t) ? '' : fixOcrPercent(t)
     }
   }

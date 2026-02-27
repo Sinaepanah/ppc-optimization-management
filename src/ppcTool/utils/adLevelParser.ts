@@ -61,7 +61,7 @@ function parseWithTsv(tsv: string): ExtractedAdLevelData | null {
 
   const dataRow = rows.find(
     (r) =>
-      r.some((w) => /^\$[\d,.]+$/.test(w.text)) &&
+      r.some((w) => /^[\$£][\d,.]+$/.test(w.text)) &&
       r.some((w) => /^[\d,]+$/.test(w.text)) &&
       r.some((w) => /%$/.test(w.text))
   )
@@ -93,10 +93,10 @@ function parseWithOrderedValues(values: string[]): ExtractedAdLevelData {
   while ((v = advance())) {
     if (!v) break
 
-    if (!out.bid && (/^\$[\d.]+$/.test(v) || /^\d+\.\d{2}$/.test(v))) {
-      const num = parseFloat(v.replace('$', ''))
+    if (!out.bid && (/^[\$£][\d.]+$/.test(v) || /^\d+\.\d{2}$/.test(v))) {
+      const num = parseFloat(v.replace(/[\$£]/g, ''))
       if (num < 25) {
-        out.bid = v.startsWith('$') ? v : `$${v}`
+        out.bid = /^[\$£]/.test(v) ? `$${num.toFixed(2)}` : `$${v}`
         continue
       }
     }
@@ -120,13 +120,13 @@ function parseWithOrderedValues(values: string[]): ExtractedAdLevelData {
       continue
     }
 
-    if (!out.totalCost && /^\$[\d,.]+$/.test(v)) {
-      out.totalCost = v
+    if (!out.totalCost && /^[\$£][\d,.]+$/.test(v)) {
+      out.totalCost = v.replace(/^[\$£]/, '$')
       continue
     }
 
-    if (!out.cpc && /^\$[\d.]+$/.test(v)) {
-      out.cpc = v
+    if (!out.cpc && /^[\$£][\d.]+$/.test(v)) {
+      out.cpc = v.replace(/^[\$£]/, '$')
       continue
     }
 
@@ -135,8 +135,8 @@ function parseWithOrderedValues(values: string[]): ExtractedAdLevelData {
       continue
     }
 
-    if (!out.sales && /^\$[\d,.]+$/.test(v)) {
-      out.sales = v
+    if (!out.sales && /^[\$£][\d,.]+$/.test(v)) {
+      out.sales = v.replace(/^[\$£]/, '$')
       continue
     }
 
@@ -185,7 +185,7 @@ export function parseAdLevelOcrResult(
 
       const dataRow = rows.find(
         (r) =>
-          r.some((w) => /\$[\d.]/.test(w.text)) &&
+          r.some((w) => /[\$£][\d.]/.test(w.text)) &&
           r.some((w) => /[\d,]{2,}/.test(w.text))
       )
       if (dataRow) {

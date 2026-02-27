@@ -3,7 +3,7 @@ import { useCallback } from 'react'
 export type FieldType = 'currency' | 'integer' | 'percent' | 'percentWhole'
 
 function parseNum(s: string): number {
-  return parseFloat(s.replace(/[$,%]/g, '')) || 0
+  return parseFloat(s.replace(/[$,£%]/g, '')) || 0
 }
 
 function formatVal(n: number, type: FieldType): string {

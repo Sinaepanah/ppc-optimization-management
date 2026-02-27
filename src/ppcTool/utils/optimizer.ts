@@ -53,7 +53,7 @@ const MIN_BID = 0.02
 
 function parseNum(s: string): number {
   if (!s || typeof s !== 'string') return 0
-  const cleaned = s.replace(/[$,%\s]/g, '')
+  const cleaned = s.replace(/[$,£%\s]/g, '')
   return parseFloat(cleaned) || 0
 }
 
