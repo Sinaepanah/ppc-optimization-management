@@ -2,9 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import type { TopicProfile, Topic } from '../types'
 import {
   loadProfiles,
-  saveProfiles,
   loadActiveProfileId,
-  saveActiveProfileId,
   loadProfilesAsync,
   loadActiveProfileIdAsync,
   saveProfilesAsync,

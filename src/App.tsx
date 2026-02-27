@@ -6,11 +6,11 @@ import { DeduplicationPanel } from './components/DeduplicationPanel'
 import { RelevancyFilterPanel } from './components/RelevancyFilterPanel'
 import { ProfileManager } from './components/ProfileManager'
 import { AutoExactPage } from './autoExact/AutoExactPage'
-import { AcosPage } from './acos/AcosPage'
+import { PpcToolPage } from './ppcTool/PpcToolPage'
 import { useTopicProfiles } from './hooks/useTopicProfiles'
 import './App.css'
 
-type TabId = 'campaigns' | 'dedup' | 'relevancy' | 'autoExact' | 'acos'
+type TabId = 'campaigns' | 'dedup' | 'relevancy' | 'autoExact' | 'ppcTool'
 
 export default function App() {
   const [campaigns, setCampaigns] = useState<Campaign[]>(() => loadCampaigns())
@@ -82,11 +82,11 @@ export default function App() {
         </button>
         <button
           type="button"
-          className={`tabs__btn ${tab === 'acos' ? 'tabs__btn--active' : ''}`}
-          onClick={() => setTab('acos')}
-          aria-pressed={tab === 'acos'}
+          className={`tabs__btn ${tab === 'ppcTool' ? 'tabs__btn--active' : ''}`}
+          onClick={() => setTab('ppcTool')}
+          aria-pressed={tab === 'ppcTool'}
         >
-          ACOS
+          PPC Tool
         </button>
       </nav>
 
@@ -115,7 +115,7 @@ export default function App() {
           </div>
         )}
         {tab === 'autoExact' && <AutoExactPage profiles={profiles} />}
-        {tab === 'acos' && <AcosPage />}
+        {tab === 'ppcTool' && <PpcToolPage />}
       </main>
     </div>
   )
