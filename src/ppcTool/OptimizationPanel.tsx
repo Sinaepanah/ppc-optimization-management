@@ -17,7 +17,7 @@ export function OptimizationPanel({ adLevelData, placementData }: OptimizationPa
   }, [adLevelData, placementData, targetAcos])
 
   const hasAdLevelData = Boolean(
-    adLevelData?.bid && adLevelData?.clicks && parseFloat(String(adLevelData.bid).replace(/[$,]/g, '')) > 0
+    adLevelData?.bid && adLevelData?.clicks && parseFloat(String(adLevelData.bid).replace(/[$,£]/g, '')) > 0
   )
 
   if (!hasAdLevelData) {
@@ -84,6 +84,10 @@ export function OptimizationPanel({ adLevelData, placementData }: OptimizationPa
                 <span className="ppc-metric-value">{result.layer1.roas.toFixed(2)}</span>
               </div>
               <div className="ppc-metric">
+                <span className="ppc-metric-label">Target ROAS</span>
+                <span className="ppc-metric-value">{result.layer1.targetRoas.toFixed(2)}</span>
+              </div>
+              <div className="ppc-metric">
                 <span className="ppc-metric-label">CVR</span>
                 <span className="ppc-metric-value">{(result.layer1.cvr * 100).toFixed(2)}%</span>
               </div>
@@ -95,11 +99,10 @@ export function OptimizationPanel({ adLevelData, placementData }: OptimizationPa
               <h4>Layer 2: Placement Bid Adjustments</h4>
               <p className="ppc-optimization-hint">
                 {result.layer1.status === 'unprofitable'
-                  ? 'Fix base bid profitability first. Do not adjust placements yet.'
+                  ? 'Shifting traffic toward profitable placements can improve overall ACoS. Amplify strong placements, reduce weak ones.'
                   : 'Adjustments are percentages applied on top of the base bid for each placement.'}
               </p>
-              {result.layer1.status !== 'unprofitable' && (
-                <div className="ppc-placement-suggestions">
+              <div className="ppc-placement-suggestions">
                   {(['topOfSearch', 'restOfSearch', 'productPages'] as const).map((key) => {
                     const p = result.layer2[key]
                     const labels = {
@@ -130,8 +133,7 @@ export function OptimizationPanel({ adLevelData, placementData }: OptimizationPa
                       </div>
                     )
                   })}
-                </div>
-              )}
+              </div>
             </section>
           )}
         </div>

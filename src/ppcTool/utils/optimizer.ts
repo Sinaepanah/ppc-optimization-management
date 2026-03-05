@@ -1,8 +1,8 @@
 /**
- * Two-layer PPC optimization logic.
- * Layer 1: Base bid (ad-level profitability)
- * Layer 2: Placement bid adjustments (traffic distribution)
- * Uses conservative caps to avoid killing impression share.
+ * PPC optimization logic aligned with Amazon Ads design and partner best practices.
+ * Layer 1: Base bid (Target ACoS formula: Bidbear, AdLabs)
+ * Layer 2: Placement adjustments (traffic distribution per Amazon placement controls)
+ * Conservative caps to avoid killing impression share.
  */
 
 import type { ExtractedPlacementData, PlacementRow } from './placementParser'
@@ -33,10 +33,11 @@ export interface OptimizationResult {
   layer1: {
     suggestedBaseBid: number
     changePercent: number
-    status: 'profitable' | 'unprofitable' | 'on-target' | 'insufficient-data'
+    status: 'profitable' | 'unprofitable' | 'on-target' | 'insufficient-data' | 'low-visibility'
     rationale: string
     economicMaxCpc: number
     roas: number
+    targetRoas: number
     cvr: number
   }
   layer2: {
@@ -47,9 +48,10 @@ export interface OptimizationResult {
   }
 }
 
-const MAX_BID_CHANGE_PCT = 20
+const MAX_BID_CHANGE_PCT = 25
 const MAX_PLACEMENT_CHANGE_PCT = 25
 const MIN_BID = 0.02
+const LOW_IMPRESSION_THRESHOLD = 100
 
 function parseNum(s: string): number {
   if (!s || typeof s !== 'string') return 0
@@ -113,6 +115,7 @@ export function optimize(
   if (!ad) return null
 
   const targetAcos = targetAcosPct / 100
+  const targetRoas = 1 / targetAcos
 
   const revenuePerClick = ad.clicks > 0 ? ad.sales / ad.clicks : 0
   const economicMaxCpc = revenuePerClick * targetAcos
@@ -125,28 +128,35 @@ export function optimize(
 
   if (ad.sales > 0 && ad.totalCost > 0) {
     const currentAcos = ad.totalCost / ad.sales
+    const currentAcosPct = currentAcos * 100
 
-    if (currentAcos <= targetAcos * 0.9) {
+    if (ad.impressions > 0 && ad.impressions < LOW_IMPRESSION_THRESHOLD) {
+      status = 'low-visibility'
+      rationale = `Low visibility (${ad.impressions} impressions). Consider increasing bid to test; monitor closely.`
+      suggestedBaseBid = Math.min(ad.bid * 1.15, economicMaxCpc)
+      suggestedBaseBid = Math.max(MIN_BID, Math.round(suggestedBaseBid * 100) / 100)
+    } else if (currentAcos <= targetAcos * 0.9) {
       status = 'profitable'
-      rationale = `ACoS ${(currentAcos * 100).toFixed(1)}% is below target ${targetAcosPct}%. Keyword is profitable.`
-      const optimalBid = Math.min(economicMaxCpc, ad.bid * 1.2)
-      const increase = Math.min((optimalBid - ad.bid) / ad.bid, MAX_BID_CHANGE_PCT / 100)
-      suggestedBaseBid = Math.min(ad.bid * (1 + increase), economicMaxCpc * 1.1)
-      suggestedBaseBid = Math.max(suggestedBaseBid, ad.bid)
-    } else if (currentAcos >= targetAcos * 1.2) {
+      rationale = `ACoS ${currentAcosPct.toFixed(1)}% is below target ${targetAcosPct}%. Keyword is profitable.`
+      const formulaBid = (targetAcos / currentAcos) * ad.bid
+      const cappedBid = Math.min(formulaBid, ad.bid * (1 + MAX_BID_CHANGE_PCT / 100), economicMaxCpc * 1.05)
+      suggestedBaseBid = Math.max(cappedBid, ad.bid)
+      suggestedBaseBid = Math.min(suggestedBaseBid, economicMaxCpc * 1.1)
+      suggestedBaseBid = Math.max(MIN_BID, Math.round(suggestedBaseBid * 100) / 100)
+    } else if (currentAcos >= targetAcos * 1.1) {
       status = 'unprofitable'
-      rationale = `ACoS ${(currentAcos * 100).toFixed(1)}% exceeds target ${targetAcosPct}%. Reduce bid to improve profitability.`
+      rationale = `ACoS ${currentAcosPct.toFixed(1)}% exceeds target ${targetAcosPct}%. Reduce bid to improve profitability.`
+      const formulaBid = (targetAcos / currentAcos) * ad.bid
       const floorBid = Math.max(economicMaxCpc * 0.5, MIN_BID)
-      const decrease = Math.min((ad.bid - floorBid) / ad.bid, MAX_BID_CHANGE_PCT / 100)
-      suggestedBaseBid = Math.max(ad.bid * (1 - decrease), floorBid)
-      suggestedBaseBid = Math.min(suggestedBaseBid, ad.bid)
+      const cappedBid = Math.max(formulaBid, ad.bid * (1 - MAX_BID_CHANGE_PCT / 100), floorBid)
+      suggestedBaseBid = Math.min(cappedBid, ad.bid)
+      suggestedBaseBid = Math.max(suggestedBaseBid, floorBid)
+      suggestedBaseBid = Math.max(MIN_BID, Math.round(suggestedBaseBid * 100) / 100)
     } else {
       status = 'on-target'
-      rationale = `ACoS ${(currentAcos * 100).toFixed(1)}% is near target ${targetAcosPct}%. Maintain stability.`
+      rationale = `ACoS ${currentAcosPct.toFixed(1)}% is near target ${targetAcosPct}%. Maintain stability.`
       suggestedBaseBid = ad.bid
     }
-
-    suggestedBaseBid = Math.max(MIN_BID, Math.round(suggestedBaseBid * 100) / 100)
   } else {
     rationale = 'Insufficient sales or spend data. Add placement data or ensure ad-level metrics are complete.'
   }
@@ -160,7 +170,7 @@ export function optimize(
     hasPlacementData: false,
   }
 
-  if (placementData && status !== 'unprofitable') {
+  if (placementData) {
     layer2Result.hasPlacementData = true
 
     const top = parsePlacementRow(placementData.topOfSearch)
@@ -196,14 +206,17 @@ export function optimize(
         const placeRoas = data.sales / data.totalCost
         const placeAcos = (data.totalCost / data.sales) * 100
 
-        if (placeRoas > avgRoas * 1.1) {
-          placeRationale = `Strong ROAS (${placeRoas.toFixed(2)}) vs avg. Amplify this placement.`
-          const increase = Math.min(MAX_PLACEMENT_CHANGE_PCT / 100, 0.25)
-          suggestedAdj = Math.min(currentAdj + increase * 100, currentAdj + 25)
-        } else if (placeAcos > targetAcosPct * 1.3) {
+        const isProfitablePlacement = placeAcos < targetAcosPct * 0.9 || placeRoas > avgRoas * 1.15
+        const isUnprofitablePlacement = placeAcos > targetAcosPct * 1.2
+
+        if (isProfitablePlacement) {
+          placeRationale = `Strong ROAS (${placeRoas.toFixed(2)}), ACoS ${placeAcos.toFixed(1)}%. Amplify to shift traffic here.`
+          const increase = Math.min(MAX_PLACEMENT_CHANGE_PCT, 25)
+          suggestedAdj = Math.min(currentAdj + increase, currentAdj + 25, 900)
+        } else if (isUnprofitablePlacement) {
           placeRationale = `Placement ACoS ${placeAcos.toFixed(1)}% exceeds target. Reduce exposure.`
-          const decrease = Math.min(MAX_PLACEMENT_CHANGE_PCT / 100, 0.25)
-          suggestedAdj = Math.max(currentAdj - decrease * 100, currentAdj - 25, -50)
+          const decrease = Math.min(MAX_PLACEMENT_CHANGE_PCT, 25)
+          suggestedAdj = Math.max(currentAdj - decrease, currentAdj - 25, -50)
         } else {
           placeRationale = 'Performance in line with target. Maintain current adjustment.'
         }
@@ -220,11 +233,6 @@ export function optimize(
         rationale: placeRationale,
       }
     }
-  } else if (placementData && status === 'unprofitable') {
-    layer2Result.hasPlacementData = true
-    layer2Result.topOfSearch.rationale = 'Fix base bid profitability first. Do not adjust placements yet.'
-    layer2Result.restOfSearch.rationale = 'Fix base bid profitability first. Do not adjust placements yet.'
-    layer2Result.productPages.rationale = 'Fix base bid profitability first. Do not adjust placements yet.'
   }
 
   return {
@@ -235,6 +243,7 @@ export function optimize(
       rationale,
       economicMaxCpc,
       roas,
+      targetRoas,
       cvr,
     },
     layer2: layer2Result,

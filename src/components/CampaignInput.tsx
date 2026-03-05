@@ -7,7 +7,7 @@ import { CSVColumnSelector } from './CSVColumnSelector'
 
 interface CampaignInputProps {
   campaigns: Campaign[]
-  onCampaignsChange: (campaigns: Campaign[]) => void
+  onCampaignsChange: React.Dispatch<React.SetStateAction<Campaign[]>>
 }
 
 function generateId(): string {
@@ -25,18 +25,20 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
   const addCampaign = useCallback(
     (terms: string[]) => {
       const built = buildCampaignFromTerms(terms)
-      const campaign: Campaign = {
-        ...built,
-        id: generateId(),
-        name: name.trim() || `Campaign ${campaigns.length + 1}`,
-      }
-      onCampaignsChange([...campaigns, campaign])
+      onCampaignsChange((prev) => {
+        const campaign: Campaign = {
+          ...built,
+          id: generateId(),
+          name: name.trim() || `Campaign ${prev.length + 1}`,
+        }
+        return [...prev, campaign]
+      })
       setName('')
       setPasteText('')
       setCsvRows(null)
       setShowColumnSelector(false)
     },
-    [campaigns, name, onCampaignsChange]
+    [name, onCampaignsChange]
   )
 
   const handlePasteSubmit = useCallback(() => {
@@ -95,9 +97,9 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
 
   const removeCampaign = useCallback(
     (id: string) => {
-      onCampaignsChange(campaigns.filter((c) => c.id !== id))
+      onCampaignsChange((prev) => prev.filter((c) => c.id !== id))
     },
-    [campaigns, onCampaignsChange]
+    [onCampaignsChange]
   )
 
   return (

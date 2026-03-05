@@ -7,10 +7,11 @@ import { RelevancyFilterPanel } from './components/RelevancyFilterPanel'
 import { ProfileManager } from './components/ProfileManager'
 import { AutoExactPage } from './autoExact/AutoExactPage'
 import { PpcToolPage } from './ppcTool/PpcToolPage'
+import { CampaignAsinSharePage } from './campaignAsinShare/CampaignAsinSharePage'
 import { useTopicProfiles } from './hooks/useTopicProfiles'
 import './App.css'
 
-type TabId = 'campaigns' | 'dedup' | 'relevancy' | 'autoExact' | 'ppcTool'
+type TabId = 'campaigns' | 'dedup' | 'relevancy' | 'autoExact' | 'ppcTool' | 'campaignAsinShare'
 
 export default function App() {
   const [campaigns, setCampaigns] = useState<Campaign[]>(() => loadCampaigns())
@@ -88,6 +89,14 @@ export default function App() {
         >
           PPC Tool
         </button>
+        <button
+          type="button"
+          className={`tabs__btn ${tab === 'campaignAsinShare' ? 'tabs__btn--active' : ''}`}
+          onClick={() => setTab('campaignAsinShare')}
+          aria-pressed={tab === 'campaignAsinShare'}
+        >
+          Campaign ASIN Share
+        </button>
       </nav>
 
       <main className="main" role="main">
@@ -116,6 +125,7 @@ export default function App() {
         )}
         {tab === 'autoExact' && <AutoExactPage profiles={profiles} />}
         {tab === 'ppcTool' && <PpcToolPage />}
+        {tab === 'campaignAsinShare' && <CampaignAsinSharePage />}
       </main>
     </div>
   )

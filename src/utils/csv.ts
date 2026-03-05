@@ -7,15 +7,17 @@ const COMMON_TERM_COLUMNS = [
 ]
 
 export function parseCSV(text: string): string[][] {
+  if (typeof text !== 'string') return []
+  const raw = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
   const rows: string[][] = []
   let current: string[] = []
   let cell = ''
   let inQuotes = false
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i]
     if (inQuotes) {
       if (c === '"') {
-        if (text[i + 1] === '"') {
+        if (raw[i + 1] === '"') {
           cell += '"'
           i++
         } else {
@@ -35,7 +37,7 @@ export function parseCSV(text: string): string[][] {
       cell = ''
       continue
     }
-    if (c === '\r' && text[i + 1] === '\n') {
+    if (c === '\r' && raw[i + 1] === '\n') {
       i++
       current.push(cell)
       rows.push(current)
@@ -58,7 +60,7 @@ export function parseCSV(text: string): string[][] {
 }
 
 export function detectSearchTermColumn(headers: string[]): number {
-  const lower = headers.map((h) => h.trim().toLowerCase())
+  const lower = headers.map((h) => (h || '').replace(/\ufeff/g, '').trim().toLowerCase())
   for (const name of COMMON_TERM_COLUMNS) {
     const idx = lower.indexOf(name.toLowerCase())
     if (idx !== -1) return idx

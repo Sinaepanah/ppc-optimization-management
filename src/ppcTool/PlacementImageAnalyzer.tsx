@@ -30,7 +30,7 @@ interface PlacementImageAnalyzerProps {
   isSelected?: boolean
   onSelect?: () => void
   runOcrRef?: React.MutableRefObject<((file: File) => void) | null>
-  onDataChange?: (data: ExtractedPlacementData) => void
+  onDataChange?: (data: ExtractedPlacementData | null) => void
 }
 
 export function PlacementImageAnalyzer({ isSelected, onSelect, runOcrRef, onDataChange }: PlacementImageAnalyzerProps) {
@@ -118,6 +118,13 @@ export function PlacementImageAnalyzer({ isSelected, onSelect, runOcrRef, onData
     fileInputRef.current?.click()
   }, [])
 
+  const handleClear = useCallback(() => {
+    setData(null)
+    setStatus('idle')
+    setError(null)
+    onDataChange?.(null)
+  }, [onDataChange])
+
   return (
     <div className="ppc-placement-analyzer">
       <div
@@ -159,7 +166,12 @@ export function PlacementImageAnalyzer({ isSelected, onSelect, runOcrRef, onData
 
       {status !== 'idle' && data && (
         <div className="ppc-placement-results">
-          <h3>Placement data</h3>
+          <div className="ppc-form-header">
+            <h3>Placement data</h3>
+            <button type="button" className="ppc-clear-btn" onClick={handleClear} aria-label="Clear data">
+              Clear data
+            </button>
+          </div>
           <p className="ppc-form-hint">Review and correct values. Each row is a placement type.</p>
           <div className="ppc-placement-table-wrap">
             <table className="ppc-placement-table">

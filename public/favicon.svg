@@ -1,11 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1e3a5f"/>
-      <stop offset="50%" style="stop-color:#2d5a87"/>
-      <stop offset="100%" style="stop-color:#0d9488"/>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fef9c3"/>
+      <stop offset="40%" style="stop-color:#fde047"/>
+      <stop offset="70%" style="stop-color:#facc15"/>
+      <stop offset="100%" style="stop-color:#eab308"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.5"/>
+      <stop offset="50%" style="stop-color:#ffffff;stop-opacity:0"/>
+      <stop offset="100%" style="stop-color:#000000;stop-opacity:0.08"/>
     </linearGradient>
   </defs>
-  <rect width="32" height="32" rx="7" fill="url(#bg)"/>
-  <text x="16" y="22" font-family="system-ui, -apple-system, sans-serif" font-size="17" font-weight="800" fill="#fbbf24" text-anchor="middle">A</text>
+  <rect width="32" height="32" rx="8" fill="url(#gold)"/>
+  <rect width="32" height="32" rx="8" fill="url(#shine)"/>
+  <text x="16" y="21" font-family="'Palatino Linotype', 'Book Antiqua', Georgia, serif" font-size="17" font-weight="600" fill="#a16207" text-anchor="middle">A</text>
 </svg>

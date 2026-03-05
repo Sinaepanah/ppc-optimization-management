@@ -108,6 +108,15 @@ export function ImageUploadAnalyzer({ isSelected, onSelect, runOcrRef, onDataCha
     fileInputRef.current?.click()
   }, [])
 
+  const handleClear = useCallback(() => {
+    const empty: Record<string, string> = {}
+    for (const f of FIELDS) empty[f.key] = ''
+    setValues(empty)
+    setStatus('idle')
+    setError(null)
+    onDataChange?.(empty)
+  }, [onDataChange])
+
   return (
     <div className="ppc-image-analyzer">
       <div
@@ -149,7 +158,12 @@ export function ImageUploadAnalyzer({ isSelected, onSelect, runOcrRef, onDataCha
 
       {status !== 'idle' && (
         <div className="ppc-extracted-form">
-          <h3>Extracted data</h3>
+          <div className="ppc-form-header">
+            <h3>Extracted data</h3>
+            <button type="button" className="ppc-clear-btn" onClick={handleClear} aria-label="Clear data">
+              Clear data
+            </button>
+          </div>
           <p className="ppc-form-hint">Review and correct values as needed.</p>
           <div className="ppc-fields">
             {FIELDS.map(({ key, label, prefix, suffix, type }) => (

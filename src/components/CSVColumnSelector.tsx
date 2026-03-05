@@ -22,6 +22,10 @@ export const CSVColumnSelector: FC<CSVColumnSelectorProps> = ({
   return (
     <div className="csv-column-selector">
       <p className="csv-column-selector__hint">Select the column that contains search terms:</p>
+      <div className="csv-column-selector__actions">
+        <button type="button" onClick={onCancel} className="btn btn--secondary">Cancel</button>
+        <button type="button" onClick={onConfirm} className="btn btn--primary">Use this column</button>
+      </div>
       <div className="csv-column-selector__list">
         {options.map((label, i) => (
           <label key={i} className="csv-column-selector__option">
@@ -35,10 +39,6 @@ export const CSVColumnSelector: FC<CSVColumnSelectorProps> = ({
             {i === suggested && <span className="csv-column-selector__suggested"> (suggested)</span>}
           </label>
         ))}
-      </div>
-      <div className="csv-column-selector__actions">
-        <button type="button" onClick={onCancel} className="btn btn--secondary">Cancel</button>
-        <button type="button" onClick={onConfirm} className="btn btn--primary">Use this column</button>
       </div>
     </div>
   )
