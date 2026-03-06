@@ -1,6 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { ImageUploadAnalyzer } from './ImageUploadAnalyzer'
 import { PlacementImageAnalyzer } from './PlacementImageAnalyzer'
+import { AdLevelCsvUpload } from './AdLevelCsvUpload'
+import { PlacementCsvUpload } from './PlacementCsvUpload'
+import { AdLevelDataForm } from './AdLevelDataForm'
+import { PlacementDataTable } from './PlacementDataTable'
 import { OptimizationPanel } from './OptimizationPanel'
 import type { ExtractedPlacementData } from './utils/placementParser'
 
@@ -38,12 +42,23 @@ export function PpcToolPage() {
           Click the upload box to select it for paste (Ctrl+V). Upload a screenshot of Amazon Campaign Manager
           ad-level metrics. The tool extracts Bid, Impressions, Clicks, Total Cost, CPC, Purchases, Sales, and ACOS.
         </p>
-        <ImageUploadAnalyzer
-          isSelected={pasteTarget === 'adLevel'}
-          onSelect={() => setPasteTarget('adLevel')}
-          runOcrRef={adLevelRunOcrRef}
-          onDataChange={setAdLevelData}
-        />
+        <div className="ppc-upload-row">
+          <div className="ppc-upload-option">
+            <ImageUploadAnalyzer
+              isSelected={pasteTarget === 'adLevel'}
+              onSelect={() => setPasteTarget('adLevel')}
+              runOcrRef={adLevelRunOcrRef}
+              onDataChange={setAdLevelData}
+            />
+          </div>
+          <span className="ppc-upload-divider ppc-upload-divider--vertical">or</span>
+          <div className="ppc-upload-option">
+            <AdLevelCsvUpload onDataChange={setAdLevelData} />
+          </div>
+        </div>
+        {Object.values(adLevelData || {}).some((v) => v != null && String(v).trim() !== '') && (
+          <AdLevelDataForm values={adLevelData} onDataChange={setAdLevelData} />
+        )}
       </div>
 
       <div className="panel ppc-placement-panel">
@@ -52,12 +67,23 @@ export function PpcToolPage() {
           Click the upload box to select it for paste (Ctrl+V). Upload a screenshot of the placement table (4×11).
           Extracts data for Top of search, Rest of search, and Product pages.
         </p>
-        <PlacementImageAnalyzer
-          isSelected={pasteTarget === 'placement'}
-          onSelect={() => setPasteTarget('placement')}
-          runOcrRef={placementRunOcrRef}
-          onDataChange={setPlacementData}
-        />
+        <div className="ppc-upload-row">
+          <div className="ppc-upload-option">
+            <PlacementImageAnalyzer
+              isSelected={pasteTarget === 'placement'}
+              onSelect={() => setPasteTarget('placement')}
+              runOcrRef={placementRunOcrRef}
+              onDataChange={setPlacementData}
+            />
+          </div>
+          <span className="ppc-upload-divider ppc-upload-divider--vertical">or</span>
+          <div className="ppc-upload-option">
+            <PlacementCsvUpload onDataChange={setPlacementData} />
+          </div>
+        </div>
+        {placementData && (
+          <PlacementDataTable data={placementData} onDataChange={setPlacementData} />
+        )}
       </div>
 
       <div className="panel ppc-optimization-panel-wrap">

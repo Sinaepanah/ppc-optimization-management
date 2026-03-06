@@ -141,7 +141,9 @@ function parseWithOrderedValues(values: string[]): ExtractedAdLevelData {
     }
 
     if (!out.acos && (/%$/.test(v) || /^\d+\.?\d*$/.test(v))) {
-      out.acos = v.includes('%') ? v : `${v}%`
+      const num = parseFloat(v.replace(/%/g, ''))
+      const pct = !isNaN(num) && num > 0 && num < 1 ? num * 100 : num
+      out.acos = !isNaN(pct) ? String(pct) : v.replace(/%/g, '')
       continue
     }
   }

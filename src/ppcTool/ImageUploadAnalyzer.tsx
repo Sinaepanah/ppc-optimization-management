@@ -1,19 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { createWorker } from 'tesseract.js'
 import { preprocessForOcr } from './utils/imagePreprocess'
-import { parseAdLevelOcrResult, type ExtractedAdLevelData } from './utils/adLevelParser'
-import { NumberInputWithArrows, type FieldType } from './components/NumberInputWithArrows'
+import { parseAdLevelOcrResult } from './utils/adLevelParser'
 
-const FIELDS: Array<{ key: keyof ExtractedAdLevelData; label: string; prefix?: string; suffix?: string; type: FieldType }> = [
-  { key: 'bid', label: 'Bid', prefix: '$', type: 'currency' },
-  { key: 'impressions', label: 'Impressions', type: 'integer' },
-  { key: 'clicks', label: 'Clicks', type: 'integer' },
-  { key: 'totalCost', label: 'Total Cost', prefix: '$', type: 'currency' },
-  { key: 'cpc', label: 'CPC', prefix: '$', type: 'currency' },
-  { key: 'purchases', label: 'Purchases', type: 'integer' },
-  { key: 'sales', label: 'Sales', prefix: '$', type: 'currency' },
-  { key: 'acos', label: 'ACOS', suffix: '%', type: 'percent' },
-]
+const AD_LEVEL_KEYS = ['bid', 'impressions', 'clicks', 'totalCost', 'cpc', 'purchases', 'sales', 'acos'] as const
 
 interface ImageUploadAnalyzerProps {
   isSelected?: boolean
@@ -23,7 +13,6 @@ interface ImageUploadAnalyzerProps {
 }
 
 export function ImageUploadAnalyzer({ isSelected, onSelect, runOcrRef, onDataChange }: ImageUploadAnalyzerProps) {
-  const [values, setValues] = useState<Record<string, string>>({})
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -47,11 +36,9 @@ export function ImageUploadAnalyzer({ isSelected, onSelect, runOcrRef, onDataCha
       await worker.terminate()
       const extracted = parseAdLevelOcrResult(data.text, data.blocks, data.tsv)
       const next: Record<string, string> = {}
-      for (const f of FIELDS) {
-        const v = extracted[f.key]
-        next[f.key] = v ?? ''
+      for (const k of AD_LEVEL_KEYS) {
+        next[k] = extracted[k] ?? ''
       }
-      setValues(next)
       onDataChange?.(next)
       setStatus('done')
       setProgress(100)
@@ -59,7 +46,7 @@ export function ImageUploadAnalyzer({ isSelected, onSelect, runOcrRef, onDataCha
       setError(err instanceof Error ? err.message : 'OCR failed')
       setStatus('error')
     }
-  }, [])
+  }, [onDataChange])
 
   const handleFile = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,17 +75,6 @@ export function ImageUploadAnalyzer({ isSelected, onSelect, runOcrRef, onDataCha
     }
   }, [runOcr, runOcrRef])
 
-  const updateField = useCallback(
-    (key: string, value: string) => {
-      setValues((prev) => {
-        const next = { ...prev, [key]: value }
-        onDataChange?.(next)
-        return next
-      })
-    },
-    [onDataChange]
-  )
-
   const handleZoneClick = useCallback(() => {
     onSelect?.()
   }, [onSelect])
@@ -107,15 +83,6 @@ export function ImageUploadAnalyzer({ isSelected, onSelect, runOcrRef, onDataCha
     e.stopPropagation()
     fileInputRef.current?.click()
   }, [])
-
-  const handleClear = useCallback(() => {
-    const empty: Record<string, string> = {}
-    for (const f of FIELDS) empty[f.key] = ''
-    setValues(empty)
-    setStatus('idle')
-    setError(null)
-    onDataChange?.(empty)
-  }, [onDataChange])
 
   return (
     <div className="ppc-image-analyzer">
@@ -155,34 +122,6 @@ export function ImageUploadAnalyzer({ isSelected, onSelect, runOcrRef, onDataCha
       </div>
 
       {error && <p className="ppc-error">{error}</p>}
-
-      {status !== 'idle' && (
-        <div className="ppc-extracted-form">
-          <div className="ppc-form-header">
-            <h3>Extracted data</h3>
-            <button type="button" className="ppc-clear-btn" onClick={handleClear} aria-label="Clear data">
-              Clear data
-            </button>
-          </div>
-          <p className="ppc-form-hint">Review and correct values as needed.</p>
-          <div className="ppc-fields">
-            {FIELDS.map(({ key, label, prefix, suffix, type }) => (
-              <div key={key} className="ppc-field">
-                <label htmlFor={`ppc-${key}`}>{label}</label>
-                <NumberInputWithArrows
-                  id={`ppc-${key}`}
-                  value={values[key] ?? ''}
-                  onChange={(v) => updateField(key, v)}
-                  type={type}
-                  prefix={prefix}
-                  suffix={suffix}
-                  placeholder="—"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

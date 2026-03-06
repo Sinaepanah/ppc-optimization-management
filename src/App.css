@@ -1371,19 +1371,42 @@ input[type="file"]::file-selector-button:hover {
   flex-direction: column;
   gap: 1.5rem;
 }
+.ppc-upload-row {
+  display: flex;
+  align-items: stretch;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.ppc-upload-option {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.ppc-upload-divider--vertical {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  padding: 0 0.5rem;
+}
 .ppc-upload-zone {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 2.5rem;
+  padding: 1.25rem 1rem;
   border: 2px dashed var(--color-border-strong);
   border-radius: var(--radius-md);
   background: var(--color-bg-subtle);
   cursor: pointer;
   transition: border-color var(--transition), background var(--transition);
-  min-height: 140px;
+  min-height: 100px;
 }
 .ppc-upload-zone:hover {
   border-color: var(--color-primary);
@@ -1401,9 +1424,9 @@ input[type="file"]::file-selector-button:hover {
   color: var(--color-primary);
 }
 .ppc-browse-btn {
-  margin-top: 0.75rem;
-  padding: 0.5rem 1rem;
-  font-size: 0.9rem;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
   font-weight: 600;
   border-radius: var(--radius-md);
   border: 2px solid var(--color-border-strong);
@@ -1431,20 +1454,20 @@ input[type="file"]::file-selector-button:hover {
   gap: 0.35rem;
 }
 .ppc-upload-icon {
-  font-size: 2rem;
+  font-size: 1.5rem;
 }
 .ppc-upload-title {
   margin: 0;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 0.9rem;
   color: var(--color-text);
 }
 .ppc-upload-hint {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: var(--color-text-muted);
   text-align: center;
-  max-width: 400px;
+  max-width: 100%;
 }
 .ppc-upload-status {
   width: 100%;
@@ -1482,6 +1505,10 @@ input[type="file"]::file-selector-button:hover {
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
+}
+.ppc-extracted-form--full-width {
+  width: 100%;
+  margin-top: 1rem;
 }
 .ppc-extracted-form h3 {
   margin: 0 0 0.5rem;
@@ -1591,6 +1618,31 @@ input[type="file"]::file-selector-button:hover {
   font-size: 0.875rem;
 }
 
+/* PPC Upload divider (between image and CSV options) */
+.ppc-upload-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+.ppc-upload-divider::before,
+.ppc-upload-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+.ppc-csv-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.ppc-csv-upload-zone {
+  cursor: pointer;
+}
+
 /* PPC Placement Analyzer */
 .ppc-placement-analyzer {
   display: flex;
@@ -1603,13 +1655,13 @@ input[type="file"]::file-selector-button:hover {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 2.5rem;
+  padding: 1.25rem 1rem;
   border: 2px dashed var(--color-border-strong);
   border-radius: var(--radius-md);
   background: var(--color-bg-subtle);
   cursor: pointer;
   transition: border-color var(--transition), background var(--transition);
-  min-height: 140px;
+  min-height: 100px;
 }
 .ppc-placement-upload:hover {
   border-color: var(--color-primary);
@@ -1626,6 +1678,10 @@ input[type="file"]::file-selector-button:hover {
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
+}
+.ppc-placement-results--full-width {
+  width: 100%;
+  margin-top: 1rem;
 }
 .ppc-placement-results h3 {
   margin: 0 0 0.5rem;

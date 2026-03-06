@@ -79,6 +79,16 @@ function fixOcrPercent(raw: string): string {
   return s.includes('%') ? `${val}%` : `${val}%`
 }
 
+/** ACOS: 0.4216 (decimal) → 42.16, 42.16 (percent) → 42.16 */
+function fixOcrAcos(raw: string): string {
+  const s = fixOcrPercent(raw)
+  if (!s) return ''
+  const n = parseFloat(s.replace(/%/g, ''))
+  if (isNaN(n)) return s.replace(/%/g, '')
+  const pct = n > 0 && n < 1 ? n * 100 : n
+  return String(pct)
+}
+
 function parseTsvWords(tsv: string): TsvWord[] {
   const lines = tsv.trim().split(/\r?\n/)
   const words: TsvWord[] = []
@@ -253,7 +263,7 @@ function extractRowByPosition(words: TsvWord[]): Partial<PlacementRow> {
     }
 
     if (!row.acos && (EMPTY.test(v) || /%$/.test(v) || /^\d+\.?\d*$/.test(v))) {
-      row.acos = EMPTY.test(v) ? '' : fixOcrPercent(v)
+      row.acos = EMPTY.test(v) ? '' : fixOcrAcos(v)
       continue
     }
   }
@@ -283,7 +293,7 @@ function extractRowByPattern(words: TsvWord[]): Partial<PlacementRow> {
     { key: 'cpc', test: (s) => EMPTY.test(s) || /^[\$£][\d.]+$/.test(s), fix: fixOcrCurrency },
     { key: 'purchases', test: (s) => EMPTY.test(s) || /^\d+$/.test(s) },
     { key: 'sales', test: (s) => EMPTY.test(s) || /^[\$£][\d,.]+$/.test(s), fix: fixOcrCurrency },
-    { key: 'acos', test: (s) => EMPTY.test(s) || /%$/.test(s) || /^\d+\.?\d*$/.test(s), fix: fixOcrPercent },
+    { key: 'acos', test: (s) => EMPTY.test(s) || /%$/.test(s) || /^\d+\.?\d*$/.test(s), fix: fixOcrAcos },
   ]
 
   for (const { key, test, fix } of patterns) {
@@ -441,7 +451,7 @@ function parsePlacementFromText(text: string): ExtractedPlacementData | null {
       else if (!row.cpc && (/^[\$£][\d.]+$/.test(t) || EMPTY.test(t))) row.cpc = EMPTY.test(t) ? '' : fixOcrCurrency(t)
       else if (!row.purchases && (/^\d+$/.test(t) || EMPTY.test(t))) row.purchases = EMPTY.test(t) ? '' : t
       else if (!row.sales && (/^[\$£][\d,.]+$/.test(t) || EMPTY.test(t))) row.sales = EMPTY.test(t) ? '' : fixOcrCurrency(t)
-      else if (!row.acos && (/%$/.test(t) || /^\d+\.?\d*$/.test(t) || EMPTY.test(t))) row.acos = EMPTY.test(t) ? '' : fixOcrPercent(t)
+      else if (!row.acos && (/%$/.test(t) || /^\d+\.?\d*$/.test(t) || EMPTY.test(t))) row.acos = EMPTY.test(t) ? '' : fixOcrAcos(t)
     }
   }
 

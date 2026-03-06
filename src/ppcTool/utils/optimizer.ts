@@ -49,7 +49,7 @@ export interface OptimizationResult {
 }
 
 const MAX_BID_CHANGE_PCT = 25
-const MAX_PLACEMENT_CHANGE_PCT = 25
+const MAX_PLACEMENT_CHANGE_PCT = 50
 const MIN_BID = 0.02
 const LOW_IMPRESSION_THRESHOLD = 100
 
@@ -57,6 +57,13 @@ function parseNum(s: string): number {
   if (!s || typeof s !== 'string') return 0
   const cleaned = s.replace(/[$,£%\s]/g, '')
   return parseFloat(cleaned) || 0
+}
+
+/** ACOS: 0.4216 (decimal) → 42.16, 42.16 (percent) → 42.16 */
+function parseAcos(s: string): number {
+  const n = parseNum(s)
+  if (n > 0 && n < 1) return n * 100
+  return n
 }
 
 function parseAdLevelMetrics(data: Record<string, string>): AdLevelMetrics | null {
@@ -69,7 +76,7 @@ function parseAdLevelMetrics(data: Record<string, string>): AdLevelMetrics | nul
   if (!bid || !clicks) return null
 
   const cpc = parseNum(data.cpc ?? '') || (totalCost && clicks ? totalCost / clicks : 0)
-  const acos = parseNum(data.acos ?? '') || (totalCost && sales ? (totalCost / sales) * 100 : 0)
+  const acos = parseAcos(data.acos ?? '') || (totalCost && sales ? (totalCost / sales) * 100 : 0)
   const impressions = parseNum(data.impressions ?? '')
 
   return {
@@ -91,7 +98,7 @@ function parsePlacementRow(row: PlacementRow): PlacementMetrics | null {
   if (clicks === 0 && totalCost === 0) return null
 
   const bidAdjustment = parseNum(row.bidAdjustment ?? '')
-  const acos = parseNum(row.acos ?? '') || (totalCost && sales ? (totalCost / sales) * 100 : 0)
+  const acos = parseAcos(row.acos ?? '') || (totalCost && sales ? (totalCost / sales) * 100 : 0)
   const cpc = parseNum(row.cpc ?? '') || (totalCost && clicks ? totalCost / clicks : 0)
 
   return {
@@ -206,13 +213,18 @@ export function optimize(
         const placeRoas = data.sales / data.totalCost
         const placeAcos = (data.totalCost / data.sales) * 100
 
-        const isProfitablePlacement = placeAcos < targetAcosPct * 0.9 || placeRoas > avgRoas * 1.15
+        const isProfitablePlacement =
+          placeAcos < targetAcosPct * 0.9 ||
+          placeRoas > avgRoas * 1.15 ||
+          (avgRoas > 0 && placeRoas > avgRoas)
+
         const isUnprofitablePlacement = placeAcos > targetAcosPct * 1.2
 
         if (isProfitablePlacement) {
           placeRationale = `Strong ROAS (${placeRoas.toFixed(2)}), ACoS ${placeAcos.toFixed(1)}%. Amplify to shift traffic here.`
-          const increase = Math.min(MAX_PLACEMENT_CHANGE_PCT, 25)
-          suggestedAdj = Math.min(currentAdj + increase, currentAdj + 25, 900)
+          const baseIncrease = placeAcos < targetAcosPct * 0.5 ? 50 : placeAcos < targetAcosPct * 0.7 ? 35 : 25
+          const increase = Math.min(MAX_PLACEMENT_CHANGE_PCT, baseIncrease)
+          suggestedAdj = Math.min(currentAdj + increase, 900)
         } else if (isUnprofitablePlacement) {
           placeRationale = `Placement ACoS ${placeAcos.toFixed(1)}% exceeds target. Reduce exposure.`
           const decrease = Math.min(MAX_PLACEMENT_CHANGE_PCT, 25)

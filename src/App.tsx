@@ -8,10 +8,11 @@ import { ProfileManager } from './components/ProfileManager'
 import { AutoExactPage } from './autoExact/AutoExactPage'
 import { PpcToolPage } from './ppcTool/PpcToolPage'
 import { CampaignAsinSharePage } from './campaignAsinShare/CampaignAsinSharePage'
+import { SQPPage } from './features/sqp/SQPPage'
 import { useTopicProfiles } from './hooks/useTopicProfiles'
 import './App.css'
 
-type TabId = 'campaigns' | 'dedup' | 'relevancy' | 'autoExact' | 'ppcTool' | 'campaignAsinShare'
+type TabId = 'campaigns' | 'dedup' | 'relevancy' | 'autoExact' | 'ppcTool' | 'campaignAsinShare' | 'sqp'
 
 export default function App() {
   const [campaigns, setCampaigns] = useState<Campaign[]>(() => loadCampaigns())
@@ -97,6 +98,14 @@ export default function App() {
         >
           Campaign ASIN Share
         </button>
+        <button
+          type="button"
+          className={`tabs__btn ${tab === 'sqp' ? 'tabs__btn--active' : ''}`}
+          onClick={() => setTab('sqp')}
+          aria-pressed={tab === 'sqp'}
+        >
+          SQP
+        </button>
       </nav>
 
       <main className="main" role="main">
@@ -126,6 +135,7 @@ export default function App() {
         {tab === 'autoExact' && <AutoExactPage profiles={profiles} />}
         {tab === 'ppcTool' && <PpcToolPage />}
         {tab === 'campaignAsinShare' && <CampaignAsinSharePage />}
+        {tab === 'sqp' && <SQPPage />}
       </main>
     </div>
   )
