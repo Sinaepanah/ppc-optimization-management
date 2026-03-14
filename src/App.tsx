@@ -1,4 +1,17 @@
 import { useState, useEffect } from 'react'
+import type { LucideIcon } from 'lucide-react'
+import {
+  LayoutList,
+  TrendingUp,
+  FileInput,
+  Copy,
+  Filter,
+  ArrowRight,
+  SlidersHorizontal,
+  BarChart3,
+  Search,
+  Layers,
+} from 'lucide-react'
 import type { Campaign } from './types'
 import { loadCampaigns, loadCampaignsAsync, saveCampaignsAsync } from './utils/storage'
 import { CampaignInput } from './components/CampaignInput'
@@ -7,16 +20,38 @@ import { RelevancyFilterPanel } from './components/RelevancyFilterPanel'
 import { ProfileManager } from './components/ProfileManager'
 import { AutoExactPage } from './autoExact/AutoExactPage'
 import { PpcToolPage } from './ppcTool/PpcToolPage'
+import { BulkPpcPage } from './bulkPpc/BulkPpcPage'
 import { CampaignAsinSharePage } from './campaignAsinShare/CampaignAsinSharePage'
 import { SQPPage } from './features/sqp/SQPPage'
 import { useTopicProfiles } from './hooks/useTopicProfiles'
 import './App.css'
 
-type TabId = 'campaigns' | 'dedup' | 'relevancy' | 'autoExact' | 'ppcTool' | 'campaignAsinShare' | 'sqp'
+type TabId = 'campaigns' | 'dedup' | 'relevancy' | 'autoExact' | 'ppcTool' | 'bulkPpc' | 'campaignAsinShare' | 'sqp'
+type TabGroup = 'campaign' | 'ppc'
+
+const CAMPAIGN_TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
+  { id: 'campaigns', label: 'Campaign Input', icon: FileInput },
+  { id: 'dedup', label: 'Deduplication', icon: Copy },
+  { id: 'relevancy', label: 'Relevancy Filter', icon: Filter },
+  { id: 'autoExact', label: 'Auto → Exact', icon: ArrowRight },
+]
+
+const PPC_TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
+  { id: 'ppcTool', label: 'Exact Bid Tools', icon: SlidersHorizontal },
+  { id: 'bulkPpc', label: 'Bulk PPC Optimizer', icon: Layers },
+  { id: 'campaignAsinShare', label: 'ASIN Analytics', icon: BarChart3 },
+  { id: 'sqp', label: 'SQP', icon: Search },
+]
+
+function getGroupForTab(tab: TabId): TabGroup {
+  if (CAMPAIGN_TABS.some((t) => t.id === tab)) return 'campaign'
+  return 'ppc'
+}
 
 export default function App() {
   const [campaigns, setCampaigns] = useState<Campaign[]>(() => loadCampaigns())
   const [tab, setTab] = useState<TabId>('campaigns')
+  const group: TabGroup = getGroupForTab(tab)
 
   const {
     profiles,
@@ -49,63 +84,55 @@ export default function App() {
         <p className="app-tagline">Keyword deduplication & relevancy filtering — runs locally, no data sent to servers</p>
       </header>
 
-      <nav className="tabs" role="navigation" aria-label="Main sections">
-        <button
-          type="button"
-          className={`tabs__btn ${tab === 'campaigns' ? 'tabs__btn--active' : ''}`}
-          onClick={() => setTab('campaigns')}
-          aria-pressed={tab === 'campaigns'}
-        >
-          Campaign Input
-        </button>
-        <button
-          type="button"
-          className={`tabs__btn ${tab === 'dedup' ? 'tabs__btn--active' : ''}`}
-          onClick={() => setTab('dedup')}
-          aria-pressed={tab === 'dedup'}
-        >
-          Deduplication
-        </button>
-        <button
-          type="button"
-          className={`tabs__btn ${tab === 'relevancy' ? 'tabs__btn--active' : ''}`}
-          onClick={() => setTab('relevancy')}
-          aria-pressed={tab === 'relevancy'}
-        >
-          Relevancy Filter
-        </button>
-        <button
-          type="button"
-          className={`tabs__btn ${tab === 'autoExact' ? 'tabs__btn--active' : ''}`}
-          onClick={() => setTab('autoExact')}
-          aria-pressed={tab === 'autoExact'}
-        >
-          Auto → Exact
-        </button>
-        <button
-          type="button"
-          className={`tabs__btn ${tab === 'ppcTool' ? 'tabs__btn--active' : ''}`}
-          onClick={() => setTab('ppcTool')}
-          aria-pressed={tab === 'ppcTool'}
-        >
-          PPC Tool
-        </button>
-        <button
-          type="button"
-          className={`tabs__btn ${tab === 'campaignAsinShare' ? 'tabs__btn--active' : ''}`}
-          onClick={() => setTab('campaignAsinShare')}
-          aria-pressed={tab === 'campaignAsinShare'}
-        >
-          Campaign ASIN Share
-        </button>
-        <button
-          type="button"
-          className={`tabs__btn ${tab === 'sqp' ? 'tabs__btn--active' : ''}`}
-          onClick={() => setTab('sqp')}
-          aria-pressed={tab === 'sqp'}
-        >
-          SQP
-        </button>
+      <nav className="tab-groups" role="navigation" aria-label="Main sections">
+        <div className="tab-groups__primary">
+          <button
+            type="button"
+            className={`tab-groups__primary-btn ${group === 'campaign' ? 'tab-groups__primary-btn--active' : ''}`}
+            onClick={() => setTab('campaigns')}
+            aria-pressed={group === 'campaign'}
+          >
+            <LayoutList className="tab-groups__primary-icon" aria-hidden />
+            <span>Campaign Tools</span>
+          </button>
+          <button
+            type="button"
+            className={`tab-groups__primary-btn ${group === 'ppc' ? 'tab-groups__primary-btn--active' : ''}`}
+            onClick={() => setTab('ppcTool')}
+            aria-pressed={group === 'ppc'}
+          >
+            <TrendingUp className="tab-groups__primary-icon" aria-hidden />
+            <span>PPC Tools</span>
+          </button>
+        </div>
+        <div className="tab-groups__secondary">
+          {group === 'campaign' &&
+            CAMPAIGN_TABS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                className={`tab-groups__secondary-btn ${tab === id ? 'tab-groups__secondary-btn--active' : ''}`}
+                onClick={() => setTab(id)}
+                aria-pressed={tab === id}
+              >
+                <Icon className="tab-groups__secondary-icon" aria-hidden />
+                <span>{label}</span>
+              </button>
+            ))}
+          {group === 'ppc' &&
+            PPC_TABS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                className={`tab-groups__secondary-btn ${tab === id ? 'tab-groups__secondary-btn--active' : ''}`}
+                onClick={() => setTab(id)}
+                aria-pressed={tab === id}
+              >
+                <Icon className="tab-groups__secondary-icon" aria-hidden />
+                <span>{label}</span>
+              </button>
+            ))}
+        </div>
       </nav>
 
       <main className="main" role="main">
@@ -134,6 +161,7 @@ export default function App() {
         )}
         {tab === 'autoExact' && <AutoExactPage profiles={profiles} />}
         {tab === 'ppcTool' && <PpcToolPage />}
+        {tab === 'bulkPpc' && <BulkPpcPage />}
         {tab === 'campaignAsinShare' && <CampaignAsinSharePage />}
         {tab === 'sqp' && <SQPPage />}
       </main>
