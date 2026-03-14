@@ -190,11 +190,6 @@ export function optimize(
       { key: 'productPages' as const, data: product, row: placementData.productPages },
     ]
 
-    const validPlacements = placements.filter((p) => p.data && (p.data.clicks > 0 || p.data.totalCost > 0))
-    const avgRoas = validPlacements.length > 0
-      ? validPlacements.reduce((s, p) => s + (p.data!.sales / (p.data!.totalCost || 1)), 0) / validPlacements.length
-      : 0
-
     for (const { key, data, row } of placements) {
       if (!data) {
         layer2Result[key] = {
@@ -210,27 +205,23 @@ export function optimize(
       let placeRationale = ''
 
       if (data.sales > 0 && data.totalCost > 0) {
-        const placeRoas = data.sales / data.totalCost
         const placeAcos = (data.totalCost / data.sales) * 100
 
-        const isProfitablePlacement =
-          placeAcos < targetAcosPct * 0.9 ||
-          placeRoas > avgRoas * 1.15 ||
-          (avgRoas > 0 && placeRoas > avgRoas)
-
-        const isUnprofitablePlacement = placeAcos > targetAcosPct * 1.2
+        // Target ACoS as primary gate: only amplify when below target, reduce when above
+        const isProfitablePlacement = placeAcos < targetAcosPct * 0.9
+        const isUnprofitablePlacement = placeAcos > targetAcosPct * 1.1
 
         if (isProfitablePlacement) {
-          placeRationale = `Strong ROAS (${placeRoas.toFixed(2)}), ACoS ${placeAcos.toFixed(1)}%. Amplify to shift traffic here.`
+          placeRationale = `ACoS ${placeAcos.toFixed(1)}% below target ${targetAcosPct}%. Amplify to shift traffic here.`
           const baseIncrease = placeAcos < targetAcosPct * 0.5 ? 50 : placeAcos < targetAcosPct * 0.7 ? 35 : 25
           const increase = Math.min(MAX_PLACEMENT_CHANGE_PCT, baseIncrease)
           suggestedAdj = Math.min(currentAdj + increase, 900)
         } else if (isUnprofitablePlacement) {
-          placeRationale = `Placement ACoS ${placeAcos.toFixed(1)}% exceeds target. Reduce exposure.`
-          const decrease = Math.min(MAX_PLACEMENT_CHANGE_PCT, 25)
+          placeRationale = `Placement ACoS ${placeAcos.toFixed(1)}% exceeds target ${targetAcosPct}%. Reduce exposure.`
+          const decrease = placeAcos > targetAcosPct * 1.5 ? 35 : 25
           suggestedAdj = Math.max(currentAdj - decrease, currentAdj - 25, -50)
         } else {
-          placeRationale = 'Performance in line with target. Maintain current adjustment.'
+          placeRationale = `ACoS ${placeAcos.toFixed(1)}% near target ${targetAcosPct}%. Maintain current adjustment.`
         }
       } else if (data.clicks > 0 || data.totalCost > 0) {
         placeRationale = 'Limited conversion data. Maintain current adjustment.'
