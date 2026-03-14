@@ -96,7 +96,7 @@ export function BulkPpcPage() {
   }, [sortKey])
 
   const handleExportOptimized = useCallback(() => {
-    if (!parseResult || optimizations.length === 0) return
+    if (!parsed || optimizations.length === 0) return
     const headers = [...parsed.headers, 'Suggested Bid', 'Change %', 'Status', 'Action', 'Reason']
     const optMap = new Map(optimizations.map((o) => [o.rowIndex, o]))
     const rows = parsed.rows.map((row, i) => {

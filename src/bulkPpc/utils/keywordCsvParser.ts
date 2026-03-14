@@ -137,7 +137,7 @@ export function parseKeywordCsv(text: string): KeywordCsvParseResult {
         const val = (row[idx] ?? '').trim()
         if (val && !/^\s*[-—–]\s*$/.test(val)) {
           const out = normalize ? normalize(val) : val
-          if (out) (keywordRow as Record<string, string>)[key] = out
+          if (out) (keywordRow as unknown as Record<string, string>)[key] = out
         }
       }
     }

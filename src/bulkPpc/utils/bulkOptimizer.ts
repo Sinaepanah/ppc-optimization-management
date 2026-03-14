@@ -89,7 +89,6 @@ export function optimizeKeyword(
   }
 
   const targetAcos = targetAcosPct / 100
-  const targetRoas = 1 / targetAcos
   const revenuePerClick = clicks > 0 ? sales / clicks : 0
   const economicMaxCpc = revenuePerClick * targetAcos
   const ctrPct = impressions > 0 ? (clicks / impressions) * 100 : 0

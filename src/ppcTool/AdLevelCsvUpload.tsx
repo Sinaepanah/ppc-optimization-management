@@ -8,7 +8,7 @@ interface AdLevelCsvUploadProps {
 }
 
 export function AdLevelCsvUpload({ onDataChange }: AdLevelCsvUploadProps) {
-  const [status, setStatus] = useState<'idle' | 'done' | 'error'>('idle')
+  const [, setStatus] = useState<'idle' | 'done' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -74,26 +74,6 @@ export function AdLevelCsvUpload({ onDataChange }: AdLevelCsvUploadProps) {
     e.stopPropagation()
     fileInputRef.current?.click()
   }, [])
-
-  const updateField = useCallback(
-    (key: string, value: string) => {
-      setValues((prev) => {
-        const next = { ...prev, [key]: value }
-        onDataChange?.(next)
-        return next
-      })
-    },
-    [onDataChange]
-  )
-
-  const handleClear = useCallback(() => {
-    const empty: Record<string, string> = {}
-    for (const f of FIELDS) empty[f.key] = ''
-    setValues(empty)
-    setStatus('idle')
-    setError(null)
-    onDataChange?.(empty)
-  }, [onDataChange])
 
   return (
     <div className="ppc-csv-upload">

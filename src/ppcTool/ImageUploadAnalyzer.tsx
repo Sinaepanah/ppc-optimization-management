@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { createWorker } from 'tesseract.js'
+import { createWorker, PSM } from 'tesseract.js'
 import { preprocessForOcr } from './utils/imagePreprocess'
 import { parseAdLevelOcrResult } from './utils/adLevelParser'
 
@@ -29,7 +29,7 @@ export function ImageUploadAnalyzer({ isSelected, onSelect, runOcrRef, onDataCha
         },
       })
       await worker.setParameters({
-        tessedit_pageseg_mode: '4',
+        tessedit_pageseg_mode: PSM.SINGLE_COLUMN,
       })
       const preprocessed = await preprocessForOcr(file)
       const { data } = await worker.recognize(preprocessed, {}, { blocks: true, tsv: true })

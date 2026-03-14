@@ -313,7 +313,7 @@ function extractRowByPattern(words: TsvWord[]): Partial<PlacementRow> {
 
 export function parsePlacementOcrResult(
   text: string,
-  blocks: unknown,
+  _blocks: unknown,
   tsv: string | null
 ): ExtractedPlacementData {
   const defaultResult: ExtractedPlacementData = {

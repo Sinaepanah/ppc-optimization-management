@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { createWorker } from 'tesseract.js'
+import { createWorker, PSM } from 'tesseract.js'
 import { preprocessPlacementForOcr } from './utils/placementPreprocess'
-import { parsePlacementOcrResult } from './utils/placementParser'
+import { parsePlacementOcrResult, type ExtractedPlacementData } from './utils/placementParser'
 
 interface PlacementImageAnalyzerProps {
   isSelected?: boolean
@@ -26,7 +26,7 @@ export function PlacementImageAnalyzer({ isSelected, onSelect, runOcrRef, onData
           if (m.status === 'recognizing text') setProgress(Math.round(m.progress * 100))
         },
       })
-      await worker.setParameters({ tessedit_pageseg_mode: '6' })
+      await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK })
       const preprocessed = await preprocessPlacementForOcr(file)
       const { data: ocrData } = await worker.recognize(preprocessed, {}, { blocks: true, tsv: true })
       await worker.terminate()

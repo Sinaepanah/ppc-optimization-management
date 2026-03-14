@@ -7,7 +7,7 @@ interface PlacementCsvUploadProps {
 }
 
 export function PlacementCsvUpload({ onDataChange }: PlacementCsvUploadProps) {
-  const [status, setStatus] = useState<'idle' | 'done' | 'error'>('idle')
+  const [, setStatus] = useState<'idle' | 'done' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
