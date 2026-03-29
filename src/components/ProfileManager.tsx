@@ -191,36 +191,41 @@ export function ProfileManager({
       </div>
 
       {activeProfile && (
-        <>
-          <details className="profile-manager__topics-accordion">
-            <summary className="profile-manager__topics-summary">Allowed topics</summary>
-            <div className="profile-manager__topics-body">
-              <TopicList
-                topics={activeProfile.allowedTopics}
-                group="allowed"
-                onUpdate={handleUpdateAllowed}
-                onRemove={handleRemoveAllowed}
-                onAdd={handleAddAllowed}
-                title=""
-                showHeading={false}
-              />
-            </div>
-          </details>
-          <details className="profile-manager__topics-accordion">
-            <summary className="profile-manager__topics-summary">Excluded topics</summary>
-            <div className="profile-manager__topics-body">
-              <TopicList
-                topics={activeProfile.excludedTopics}
-                group="excluded"
-                onUpdate={handleUpdateExcluded}
-                onRemove={handleRemoveExcluded}
-                onAdd={handleAddExcluded}
-                title=""
-                showHeading={false}
-              />
-            </div>
-          </details>
-        </>
+        <details className="relevancy-tab__topics-outer">
+          <summary className="relevancy-tab__topics-outer-summary">
+            Allowed &amp; excluded topics — expand to edit
+          </summary>
+          <div className="relevancy-tab__topics-outer-inner">
+            <details className="profile-manager__topics-accordion">
+              <summary className="profile-manager__topics-summary">Allowed topics</summary>
+              <div className="profile-manager__topics-body">
+                <TopicList
+                  topics={activeProfile.allowedTopics}
+                  group="allowed"
+                  onUpdate={handleUpdateAllowed}
+                  onRemove={handleRemoveAllowed}
+                  onAdd={handleAddAllowed}
+                  title=""
+                  showHeading={false}
+                />
+              </div>
+            </details>
+            <details className="profile-manager__topics-accordion">
+              <summary className="profile-manager__topics-summary">Excluded topics</summary>
+              <div className="profile-manager__topics-body">
+                <TopicList
+                  topics={activeProfile.excludedTopics}
+                  group="excluded"
+                  onUpdate={handleUpdateExcluded}
+                  onRemove={handleRemoveExcluded}
+                  onAdd={handleAddExcluded}
+                  title=""
+                  showHeading={false}
+                />
+              </div>
+            </details>
+          </div>
+        </details>
       )}
     </form>
   )

@@ -148,10 +148,7 @@ export default function App() {
                 profile={activeProfile}
               />
             </div>
-            <details className="relevancy-tab__profiles-bottom">
-              <summary className="relevancy-tab__profiles-summary">
-                Topic profiles &amp; topic rules (allowed / excluded) — expand to edit
-              </summary>
+            <div className="relevancy-tab__profiles-section">
               <ProfileManager
                 profiles={profiles}
                 activeProfile={activeProfile}
@@ -163,7 +160,7 @@ export default function App() {
                 onLoadPreset={loadPreset}
                 onSaveProfile={saveProfileNow}
               />
-            </details>
+            </div>
           </div>
         )}
         {tab === 'autoExact' && <AutoExactPage profiles={profiles} />}

@@ -722,16 +722,26 @@ body {
   flex: 1 0 auto;
 }
 
-.relevancy-tab__profiles-bottom {
+.relevancy-tab__profiles-section {
   margin-top: auto;
   flex-shrink: 0;
+  padding-top: 1.5rem;
+}
+
+.relevancy-tab__profiles-section .profile-manager {
+  margin-bottom: 0;
+}
+
+/* Collapsible wrapper for Allowed + Excluded topic lists only */
+.relevancy-tab__topics-outer {
+  margin-top: 1.25rem;
   border: 2px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
   overflow: hidden;
 }
 
-.relevancy-tab__profiles-summary {
+.relevancy-tab__topics-outer-summary {
   list-style: none;
   padding: 1rem 1.25rem;
   font-weight: 700;
@@ -743,25 +753,26 @@ body {
   user-select: none;
 }
 
-.relevancy-tab__profiles-summary::-webkit-details-marker {
+.relevancy-tab__topics-outer-summary::-webkit-details-marker {
   display: none;
 }
 
-.relevancy-tab__profiles-summary::before {
+.relevancy-tab__topics-outer-summary::before {
   content: '▸ ';
   display: inline-block;
   transition: transform 0.15s ease;
   color: var(--color-primary);
 }
 
-.relevancy-tab__profiles-bottom[open] .relevancy-tab__profiles-summary::before {
+.relevancy-tab__topics-outer[open] .relevancy-tab__topics-outer-summary::before {
   transform: rotate(90deg);
 }
 
-.relevancy-tab__profiles-bottom .profile-manager {
-  margin: 0;
-  padding: 1.25rem 1.25rem 2rem;
-  border-bottom: none;
+.relevancy-tab__topics-outer-inner {
+  padding: 1rem 1.25rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .relevancy-tab .panel {
