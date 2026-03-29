@@ -715,6 +715,53 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0;
+  min-height: calc(100vh - 12rem);
+}
+
+.relevancy-tab__main {
+  flex: 1 0 auto;
+}
+
+.relevancy-tab__profiles-bottom {
+  margin-top: auto;
+  flex-shrink: 0;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.relevancy-tab__profiles-summary {
+  list-style: none;
+  padding: 1rem 1.25rem;
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-subtle);
+  border-bottom: 1px solid var(--color-border);
+  user-select: none;
+}
+
+.relevancy-tab__profiles-summary::-webkit-details-marker {
+  display: none;
+}
+
+.relevancy-tab__profiles-summary::before {
+  content: '▸ ';
+  display: inline-block;
+  transition: transform 0.15s ease;
+  color: var(--color-primary);
+}
+
+.relevancy-tab__profiles-bottom[open] .relevancy-tab__profiles-summary::before {
+  transform: rotate(90deg);
+}
+
+.relevancy-tab__profiles-bottom .profile-manager {
+  margin: 0;
+  padding: 1.25rem 1.25rem 2rem;
+  border-bottom: none;
 }
 
 .relevancy-tab .panel {
@@ -841,6 +888,76 @@ body {
   padding-bottom: 2rem;
   border-bottom: 2px solid var(--color-border);
   margin-bottom: 1.75rem;
+}
+
+.profile-manager--unified {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.profile-manager__intro {
+  margin-top: 0;
+}
+
+.profile-manager__unified-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 1.25rem;
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.profile-manager__toolbar--inline {
+  margin-bottom: 0;
+}
+
+.profile-manager__select--inline {
+  margin-bottom: 0;
+}
+
+.profile-manager__min--inline {
+  margin-bottom: 0;
+}
+
+.profile-manager__topics-accordion {
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.profile-manager__topics-summary {
+  list-style: none;
+  padding: 0.65rem 1rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  background: rgba(79, 70, 229, 0.06);
+  user-select: none;
+}
+
+.profile-manager__topics-summary::-webkit-details-marker {
+  display: none;
+}
+
+.profile-manager__topics-summary::before {
+  content: '▸ ';
+  color: var(--color-primary);
+  margin-right: 0.35rem;
+}
+
+.profile-manager__topics-accordion[open] .profile-manager__topics-summary::before {
+  content: '▾ ';
+}
+
+.profile-manager__topics-body {
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid var(--color-border);
 }
 
 .profile-manager__toolbar {
@@ -1433,6 +1550,68 @@ input[type="file"]::file-selector-button:hover {
 
 .auto-exact-results .panel {
   margin-bottom: 1.5rem;
+}
+
+/* Compact Promote to Exact table - no horizontal scroll */
+.table-wrap--compact {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.results-table--compact {
+  font-size: 0.8rem;
+  width: 100%;
+}
+.results-table--compact th,
+.results-table--compact td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.results-table--compact th {
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.results-table--compact .auto-exact-th-checkbox,
+.results-table--compact .auto-exact-td-checkbox {
+  width: 2rem;
+  padding: 0.35rem 0.25rem;
+}
+.results-table--compact .results-table__keyword {
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.results-table--compact .results-table__keyword,
+.results-table--compact .auto-exact-td-performance {
+  text-align: left;
+}
+.results-table--compact td:not(.auto-exact-td-checkbox):not(.results-table__keyword):not(.auto-exact-td-performance) {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.results-table--compact th {
+  text-align: right;
+}
+.results-table--compact th:nth-child(2) {
+  text-align: left;
+}
+.results-table--compact th:last-child {
+  text-align: left;
+}
+.results-table--compact td.auto-exact-td-performance {
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.auto-exact-th-performance,
+.auto-exact-td-performance {
+  min-width: 4rem;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+.auto-exact-th-performance {
+  background: var(--color-bg-subtle);
 }
 
 /* ===== PPC Tool tab ===== */

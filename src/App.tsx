@@ -142,21 +142,28 @@ export default function App() {
         {tab === 'dedup' && <DeduplicationPanel campaigns={campaigns} />}
         {tab === 'relevancy' && (
           <div className="relevancy-tab">
-            <RelevancyFilterPanel
-              campaigns={campaigns}
-              profile={activeProfile}
-            />
-            <ProfileManager
-              profiles={profiles}
-              activeProfile={activeProfile}
-              activeId={activeId}
-              onSelectProfile={setActive}
-              onUpdateProfile={updateProfile}
-              onAddProfile={addProfile}
-              onDeleteProfile={deleteProfile}
-              onLoadPreset={loadPreset}
-              onSaveProfile={saveProfileNow}
-            />
+            <div className="relevancy-tab__main">
+              <RelevancyFilterPanel
+                campaigns={campaigns}
+                profile={activeProfile}
+              />
+            </div>
+            <details className="relevancy-tab__profiles-bottom">
+              <summary className="relevancy-tab__profiles-summary">
+                Topic profiles &amp; topic rules (allowed / excluded) — expand to edit
+              </summary>
+              <ProfileManager
+                profiles={profiles}
+                activeProfile={activeProfile}
+                activeId={activeId}
+                onSelectProfile={setActive}
+                onUpdateProfile={updateProfile}
+                onAddProfile={addProfile}
+                onDeleteProfile={deleteProfile}
+                onLoadPreset={loadPreset}
+                onSaveProfile={saveProfileNow}
+              />
+            </details>
           </div>
         )}
         {tab === 'autoExact' && <AutoExactPage profiles={profiles} />}

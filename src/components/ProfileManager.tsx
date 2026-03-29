@@ -98,80 +98,84 @@ export function ProfileManager({
   }
 
   return (
-    <div className="profile-manager">
-      <h3>Topic profiles</h3>
-      <p className="panel-desc">
+    <form
+      className="profile-manager profile-manager--unified"
+      onSubmit={(e) => e.preventDefault()}
+      aria-label="Topic profile settings"
+    >
+      <p className="panel-desc profile-manager__intro">
         Define allowed and excluded topics for relevancy filtering. Each topic has include phrases (word-boundary match) and optional exclude phrases.
-        You can start from a preset below or create an empty profile and edit topics as needed. Any profile can be modified after loading.
+        Start from a preset or create an empty profile. Any profile can be edited after loading.
       </p>
 
-      <div className="profile-manager__toolbar">
-        <div className="profile-manager__preset">
-          <label htmlFor="preset-select">Load preset:</label>
-          <select
-            id="preset-select"
-            value={selectedPresetId}
-            onChange={(e) => setSelectedPresetId(e.target.value as PresetId)}
-          >
-            {PRESET_OPTIONS.map((opt) => (
-              <option key={opt.id} value={opt.id}>{opt.label}</option>
-            ))}
-          </select>
-          <button type="button" className="btn btn--primary" onClick={handleLoadPreset}>
-            Load preset
-          </button>
+      <div className="profile-manager__unified-grid">
+        <div className="profile-manager__toolbar profile-manager__toolbar--inline">
+          <div className="profile-manager__preset">
+            <label htmlFor="preset-select">Load preset</label>
+            <select
+              id="preset-select"
+              value={selectedPresetId}
+              onChange={(e) => setSelectedPresetId(e.target.value as PresetId)}
+            >
+              {PRESET_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+            <button type="button" className="btn btn--primary" onClick={handleLoadPreset}>
+              Load
+            </button>
+          </div>
+          <div className="profile-manager__new">
+            <input
+              type="text"
+              value={newProfileName}
+              onChange={(e) => setNewProfileName(e.target.value)}
+              placeholder="New profile name"
+              aria-label="New profile name"
+            />
+            <button type="button" className="btn btn--primary" onClick={handleAddProfile}>
+              Create
+            </button>
+          </div>
         </div>
-        <div className="profile-manager__new">
-          <input
-            type="text"
-            value={newProfileName}
-            onChange={(e) => setNewProfileName(e.target.value)}
-            placeholder="New profile name"
-          />
-          <button type="button" className="btn btn--primary" onClick={handleAddProfile}>
-            Create profile
-          </button>
-        </div>
-      </div>
 
-      <div className="profile-manager__select">
-        <label>
-          Active profile
-          <select
-            value={activeId ?? ''}
-            onChange={(e) => onSelectProfile(e.target.value || null)}
-          >
-            <option value="">— Select profile —</option>
-            {profiles.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </label>
+        <div className="profile-manager__select profile-manager__select--inline">
+          <label>
+            Active profile
+            <select
+              value={activeId ?? ''}
+              onChange={(e) => onSelectProfile(e.target.value || null)}
+            >
+              <option value="">— Select profile —</option>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </label>
+          {activeProfile && (
+            <>
+              <button
+                type="button"
+                className="btn btn--success"
+                onClick={handleSaveProfile}
+              >
+                Save profile
+              </button>
+              {saveFeedback && <span className="profile-manager__saved">Saved!</span>}
+              <button
+                type="button"
+                className="btn btn--small btn--danger"
+                onClick={() => onDeleteProfile(activeProfile.id)}
+                aria-label={`Delete profile ${activeProfile.name}`}
+              >
+                Delete
+              </button>
+            </>
+          )}
+        </div>
+
         {activeProfile && (
-          <>
-            <button
-              type="button"
-              className="btn btn--success"
-              onClick={handleSaveProfile}
-            >
-              Save profile
-            </button>
-            {saveFeedback && <span className="profile-manager__saved">Saved!</span>}
-            <button
-              type="button"
-              className="btn btn--small btn--danger"
-              onClick={() => onDeleteProfile(activeProfile.id)}
-              aria-label={`Delete profile ${activeProfile.name}`}
-            >
-              Delete profile
-            </button>
-          </>
-        )}
-      </div>
-
-      {activeProfile && (
-        <>
-          <div className="profile-manager__min">
+          <div className="profile-manager__min profile-manager__min--inline">
             <label>
               Minimum allowed topic matches
               <input
@@ -183,24 +187,41 @@ export function ProfileManager({
               />
             </label>
           </div>
-          <TopicList
-            topics={activeProfile.allowedTopics}
-            group="allowed"
-            onUpdate={handleUpdateAllowed}
-            onRemove={handleRemoveAllowed}
-            onAdd={handleAddAllowed}
-            title="Allowed topics"
-          />
-          <TopicList
-            topics={activeProfile.excludedTopics}
-            group="excluded"
-            onUpdate={handleUpdateExcluded}
-            onRemove={handleRemoveExcluded}
-            onAdd={handleAddExcluded}
-            title="Excluded topics"
-          />
+        )}
+      </div>
+
+      {activeProfile && (
+        <>
+          <details className="profile-manager__topics-accordion">
+            <summary className="profile-manager__topics-summary">Allowed topics</summary>
+            <div className="profile-manager__topics-body">
+              <TopicList
+                topics={activeProfile.allowedTopics}
+                group="allowed"
+                onUpdate={handleUpdateAllowed}
+                onRemove={handleRemoveAllowed}
+                onAdd={handleAddAllowed}
+                title=""
+                showHeading={false}
+              />
+            </div>
+          </details>
+          <details className="profile-manager__topics-accordion">
+            <summary className="profile-manager__topics-summary">Excluded topics</summary>
+            <div className="profile-manager__topics-body">
+              <TopicList
+                topics={activeProfile.excludedTopics}
+                group="excluded"
+                onUpdate={handleUpdateExcluded}
+                onRemove={handleRemoveExcluded}
+                onAdd={handleAddExcluded}
+                title=""
+                showHeading={false}
+              />
+            </div>
+          </details>
         </>
       )}
-    </div>
+    </form>
   )
 }

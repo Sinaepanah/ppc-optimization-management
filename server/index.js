@@ -59,6 +59,7 @@ app.put('/api/campaigns', async (req, res) => {
   }
 })
 
+// Topic profiles (allowed / excluded topics for Relevancy Filter tab). Persisted for sync when VITE_API_URL points at this server.
 app.get('/api/profiles', async (_req, res) => {
   try {
     await ensureDataDir()

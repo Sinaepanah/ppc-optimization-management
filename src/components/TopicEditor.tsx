@@ -73,12 +73,14 @@ interface TopicListProps {
   onRemove: (index: number) => void
   onAdd: () => void
   title: string
+  /** When false, omit the section heading (e.g. when wrapped in &lt;details&gt;&lt;summary&gt;) */
+  showHeading?: boolean
 }
 
-export function TopicList({ topics, group, onUpdate, onRemove, onAdd, title }: TopicListProps) {
+export function TopicList({ topics, group, onUpdate, onRemove, onAdd, title, showHeading = true }: TopicListProps) {
   return (
     <div className="topic-list">
-      <h4>{title}</h4>
+      {showHeading && title ? <h4>{title}</h4> : null}
       {topics.map((t, i) => (
         <TopicEditor
           key={t.id}
