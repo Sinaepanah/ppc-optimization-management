@@ -1,5 +1,7 @@
-# Single-job pattern: build, upload artifact, and deploy in one job (GitHub Pages template).
-# Two-job split can fail artifact handoff; this matches the official static-site workflow.
+# Deploy Vite build to GitHub Pages (same action order as github.com/actions/starter-workflows pages/static.yml).
+#
+# REQUIRED repo setting: Settings → Pages → Build and deployment → Source: GitHub Actions
+# (not "Deploy from a branch"). If Source is still a branch, configure-pages / deploy-pages will fail.
 name: Deploy to GitHub Pages
 
 on:
@@ -23,9 +25,17 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Run before install/build — matches official static Pages workflow; v5 pairs with deploy-pages@v5
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -43,10 +53,7 @@ jobs:
           VITE_BASE: /${{ github.event.repository.name }}/
 
       - name: Verify dist
-        run: test -d dist && test -f dist/index.html && ls -la dist
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
+        run: test -d dist && test -f dist/index.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
@@ -55,4 +62,4 @@ jobs:
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
