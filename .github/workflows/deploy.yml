@@ -1,7 +1,10 @@
 # Deploy Vite build to GitHub Pages (same action order as github.com/actions/starter-workflows pages/static.yml).
 #
-# REQUIRED repo setting: Settings → Pages → Build and deployment → Source: GitHub Actions
-# (not "Deploy from a branch"). If Source is still a branch, configure-pages / deploy-pages will fail.
+# If "Setup Pages" fails with HttpError 404 / "Get Pages site failed", the repo has no GitHub Pages
+# site yet (REST API GET .../pages returns Not Found). Fix in the GitHub UI (repo admin):
+#   Settings → Pages → Build and deployment → Source: GitHub Actions
+# Do not use "Deploy from a branch" for this workflow. Save, then re-run the workflow.
+# Private repos: GitHub Pages may require a paid plan; see GitHub Pages documentation.
 name: Deploy to GitHub Pages
 
 on:
