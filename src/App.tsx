@@ -33,7 +33,6 @@ const CAMPAIGN_TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
   { id: 'campaigns', label: 'Campaign Input', icon: FileInput },
   { id: 'dedup', label: 'Deduplication', icon: Copy },
   { id: 'relevancy', label: 'Relevancy Filter', icon: Filter },
-  { id: 'autoExact', label: 'Auto → Exact', icon: ArrowRight },
 ]
 
 const PPC_TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
@@ -41,6 +40,7 @@ const PPC_TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
   { id: 'bulkPpc', label: 'Bulk PPC Optimizer', icon: Layers },
   { id: 'campaignAsinShare', label: 'ASIN Analytics', icon: BarChart3 },
   { id: 'sqp', label: 'SQP', icon: Search },
+  { id: 'autoExact', label: 'Auto → Exact', icon: ArrowRight },
 ]
 
 function getGroupForTab(tab: TabId): TabGroup {
