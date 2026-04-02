@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import type { ScoredTerm } from '../types'
+import { getPerformanceLabel } from '../utils/performanceComparison'
+import type { ReferenceExactMetrics } from '../utils/referenceExact'
 
 /** CPC that would achieve target ACoS: (targetAcosPct/100 * sales) / clicks */
 function optimizedCpc(salesSum: number, clicksSum: number, targetAcosPct: number): number | null {
@@ -8,7 +10,7 @@ function optimizedCpc(salesSum: number, clicksSum: number, targetAcosPct: number
   return (targetAcosPct / 100) * salesSum / clicksSum
 }
 
-type PromoteSortKey = 'originalTerm' | 'rowCount' | 'ordersSum' | 'salesSum' | 'spendSum' | 'acosPct' | 'clicksSum' | 'cvrPct' | 'suggestedCpc' | 'confidence'
+type PromoteSortKey = 'originalTerm' | 'rowCount' | 'ordersSum' | 'salesSum' | 'spendSum' | 'acosPct' | 'clicksSum' | 'cvrPct' | 'suggestedCpc'
 
 interface ResultsTablesProps {
   promoteList: ScoredTerm[]
@@ -17,9 +19,10 @@ interface ResultsTablesProps {
   targetAcosForCpc: number
   selectedIndices: Set<number>
   onSelectionChange: (indices: Set<number>) => void
+  referenceExactMetrics?: Map<string, ReferenceExactMetrics> | null
 }
 
-export function ResultsTables({ promoteList, reviewQueue, hasClicks, targetAcosForCpc, selectedIndices, onSelectionChange }: ResultsTablesProps) {
+export function ResultsTables({ promoteList, reviewQueue, hasClicks, targetAcosForCpc, selectedIndices, onSelectionChange, referenceExactMetrics }: ResultsTablesProps) {
   const headerCheckRef = useRef<HTMLInputElement>(null)
   const [sortKey, setSortKey] = useState<PromoteSortKey>('originalTerm')
   const [sortAsc, setSortAsc] = useState(true)
@@ -75,9 +78,6 @@ export function ResultsTables({ promoteList, reviewQueue, hasClicks, targetAcosF
           cmp = (ca ?? -1) - (cb ?? -1)
           break
         }
-        case 'confidence':
-          cmp = ra.confidence - rb.confidence
-          break
         default:
           cmp = 0
       }
@@ -117,8 +117,8 @@ export function ResultsTables({ promoteList, reviewQueue, hasClicks, targetAcosF
         {promoteList.length === 0 ? (
           <p className="muted">No terms qualify.</p>
         ) : (
-          <div className="table-wrap">
-            <table className="results-table">
+          <div className="table-wrap table-wrap--compact">
+            <table className="results-table results-table--compact">
               <thead>
                 <tr>
                   <th className="auto-exact-th-checkbox">
@@ -130,16 +130,16 @@ export function ResultsTables({ promoteList, reviewQueue, hasClicks, targetAcosF
                       aria-label="Select all"
                     />
                   </th>
-                  <SortableTh colKey="originalTerm">Original term</SortableTh>
-                  <SortableTh colKey="rowCount">Source rows</SortableTh>
+                  <SortableTh colKey="originalTerm">Term</SortableTh>
+                  <SortableTh colKey="rowCount">Rows</SortableTh>
                   <SortableTh colKey="ordersSum">Orders</SortableTh>
                   <SortableTh colKey="salesSum">Sales</SortableTh>
                   <SortableTh colKey="spendSum">Spend</SortableTh>
-                  <SortableTh colKey="acosPct">ACoS %</SortableTh>
+                  <SortableTh colKey="acosPct">ACoS</SortableTh>
                   {hasClicks && <SortableTh colKey="clicksSum">Clicks</SortableTh>}
-                  {hasClicks && <SortableTh colKey="cvrPct">CVR %</SortableTh>}
-                  <SortableTh colKey="suggestedCpc">Suggested CPC ({targetAcosForCpc}% ACoS)</SortableTh>
-                  <SortableTh colKey="confidence">Confidence</SortableTh>
+                  {hasClicks && <SortableTh colKey="cvrPct">CVR</SortableTh>}
+                  <SortableTh colKey="suggestedCpc">CPC ({targetAcosForCpc}%)</SortableTh>
+                  <th className="auto-exact-th-performance">Perf</th>
                 </tr>
               </thead>
               <tbody>
@@ -164,7 +164,11 @@ export function ResultsTables({ promoteList, reviewQueue, hasClicks, targetAcosF
                       {hasClicks && <td>{row.clicksSum}</td>}
                       {hasClicks && <td>{row.cvrPct != null ? `${row.cvrPct.toFixed(1)}%` : '—'}</td>}
                       <td>{(() => { const c = optimizedCpc(row.salesSum, row.clicksSum, targetAcosForCpc); return c != null ? `$${c.toFixed(2)}` : '—' })()}</td>
-                      <td>{row.confidence}</td>
+                      <td className="auto-exact-td-performance">
+                        {referenceExactMetrics?.has(row.normalizedTerm)
+                          ? getPerformanceLabel(row, referenceExactMetrics.get(row.normalizedTerm)!, row.primaryMatchType)
+                          : '—'}
+                      </td>
                     </tr>
                   )
                 })}
@@ -180,19 +184,19 @@ export function ResultsTables({ promoteList, reviewQueue, hasClicks, targetAcosF
         {reviewQueue.length === 0 ? (
           <p className="muted">None.</p>
         ) : (
-          <div className="table-wrap">
-            <table className="results-table">
+          <div className="table-wrap table-wrap--compact">
+            <table className="results-table results-table--compact">
               <thead>
                 <tr>
-                  <th>Original term</th>
-                  <th>Source rows</th>
+                  <th>Term</th>
+                  <th>Rows</th>
                   <th>Orders</th>
                   <th>Sales</th>
                   <th>Spend</th>
-                  <th>ACoS %</th>
+                  <th>ACoS</th>
                   {hasClicks && <th>Clicks</th>}
-                  {hasClicks && <th>CVR %</th>}
-                  <th>Suggested CPC ({targetAcosForCpc}% ACoS)</th>
+                  {hasClicks && <th>CVR</th>}
+                  <th>CPC ({targetAcosForCpc}%)</th>
                 </tr>
               </thead>
               <tbody>
