@@ -33,16 +33,18 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   const [hideAlreadyExact, setHideAlreadyExact] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState(false)
   const [analyzed, setAnalyzed] = useState(false)
+  const [sourceCsvNames, setSourceCsvNames] = useState<string[]>([])
 
   const handleRowsLoaded = useCallback(
-    (newRows: string[][], firstRowIsHeader: boolean, meta?: { sourceFileCount: number }) => {
+    (newRows: string[][], firstRowIsHeader: boolean, meta?: { sourceFileNames?: string[] }) => {
       setRows(newRows)
       setHasHeader(firstRowIsHeader)
       if (newRows.length > 0) {
         const suggested = getHeaderSuggestions(newRows)
         setMapping(suggested)
       }
-      if (meta && meta.sourceFileCount > 1) {
+      setSourceCsvNames(meta?.sourceFileNames ?? [])
+      if (meta?.sourceFileNames && meta.sourceFileNames.length > 1) {
         setAggregateByTerm(true)
       }
       setAnalyzed(false)
@@ -94,6 +96,8 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   return (
     <div className="auto-exact-tab">
       <Uploader
+        currentRows={rows}
+        sourceCsvNames={sourceCsvNames}
         onRowsLoaded={handleRowsLoaded}
         sourceCampaign={sourceCampaign}
         onSourceCampaignChange={setSourceCampaign}
