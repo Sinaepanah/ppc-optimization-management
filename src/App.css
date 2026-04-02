@@ -1219,6 +1219,37 @@ input[type="file"]::file-selector-button:hover {
   margin-bottom: 1.75rem;
 }
 
+.auto-exact-page-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  align-items: flex-start;
+}
+
+.auto-exact-page-top > .panel {
+  flex: 1 1 280px;
+  margin-bottom: 0;
+  min-width: min(100%, 280px);
+}
+
+.auto-exact-reference--compact .auto-exact-reference-heading {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+
+.auto-exact-reference--compact .auto-exact-reference-upload {
+  margin-top: 0;
+}
+
+.auto-exact-reference--compact .auto-exact-reference-count {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
+
+.auto-exact-empty-hint {
+  margin-top: 0.5rem;
+}
+
 .auto-exact-source-campaign label {
   display: block;
   font-weight: 600;

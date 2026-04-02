@@ -1,13 +1,11 @@
-import type { TopicProfile } from '../../types'
 import type { PromotionCriteria } from '../types'
 
 interface CriteriaPanelProps {
   criteria: PromotionCriteria
   onCriteriaChange: (c: PromotionCriteria) => void
-  profiles: TopicProfile[]
 }
 
-export function CriteriaPanel({ criteria, onCriteriaChange, profiles }: CriteriaPanelProps) {
+export function CriteriaPanel({ criteria, onCriteriaChange }: CriteriaPanelProps) {
   const update = (patch: Partial<PromotionCriteria>) => {
     onCriteriaChange({ ...criteria, ...patch })
   }
@@ -15,7 +13,6 @@ export function CriteriaPanel({ criteria, onCriteriaChange, profiles }: Criteria
   return (
     <section className="panel auto-exact-criteria">
       <h3>Promotion criteria</h3>
-      <p className="panel-desc">Terms must meet all enabled thresholds to appear in Promote to Exact.</p>
 
       <div className="auto-exact-criteria-grid">
         <div className="auto-exact-criteria-row">
@@ -42,9 +39,9 @@ export function CriteriaPanel({ criteria, onCriteriaChange, profiles }: Criteria
           <input
             type="number"
             min={0}
-            max={100}
+            max={500}
             value={criteria.maxACoS}
-            onChange={(e) => update({ maxACoS: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
+            onChange={(e) => update({ maxACoS: Math.max(0, Math.min(500, parseFloat(e.target.value) || 0)) })}
           />
         </div>
         <div className="auto-exact-criteria-row auto-exact-criteria-toggle">
@@ -85,66 +82,6 @@ export function CriteriaPanel({ criteria, onCriteriaChange, profiles }: Criteria
             />
           )}
         </div>
-      </div>
-
-      <div className="auto-exact-criteria-block">
-        <label>
-          <input
-            type="checkbox"
-            checked={criteria.excludeBranded}
-            onChange={(e) => update({ excludeBranded: e.target.checked })}
-          />
-          Exclude branded terms
-        </label>
-        {criteria.excludeBranded && (
-          <textarea
-            placeholder="One brand token per line (e.g. brand name)"
-            value={criteria.brandTokens.join('\n')}
-            onChange={(e) => update({ brandTokens: e.target.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) })}
-            rows={3}
-          />
-        )}
-      </div>
-
-      <div className="auto-exact-criteria-block">
-        <label>
-          <input
-            type="checkbox"
-            checked={criteria.excludeIrrelevant}
-            onChange={(e) => update({ excludeIrrelevant: e.target.checked })}
-          />
-          Exclude irrelevant topics
-        </label>
-        {criteria.excludeIrrelevant && (
-          <>
-            {profiles.length > 0 ? (
-              <div className="auto-exact-criteria-row">
-                <label>Use Relevancy profile</label>
-                <select
-                  value={criteria.irrelevantProfileId ?? ''}
-                  onChange={(e) => update({ irrelevantProfileId: e.target.value || null })}
-                >
-                  <option value="">— Select profile —</option>
-                  {profiles.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-            {(!criteria.irrelevantProfileId || profiles.length === 0) && (
-              <textarea
-                placeholder="Or list exclude phrases (one per line)"
-                value={criteria.irrelevantTokenList.join('\n')}
-                onChange={(e) =>
-                  update({
-                    irrelevantTokenList: e.target.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
-                  })
-                }
-                rows={2}
-              />
-            )}
-          </>
-        )}
       </div>
     </section>
   )

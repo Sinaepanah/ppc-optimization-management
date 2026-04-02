@@ -1,12 +1,12 @@
 import { useCallback, useRef } from 'react'
-import { parseReferenceExactCsv } from '../utils/referenceExact'
+import { parseReferenceExactCsvWithMetrics, type ReferenceExactResult } from '../utils/referenceExact'
 
 interface ReferenceExactUploaderProps {
-  onKeywordsLoaded: (keywords: Set<string>) => void
+  onDataLoaded: (data: ReferenceExactResult) => void
   loadedCount: number
 }
 
-export function ReferenceExactUploader({ onKeywordsLoaded, loadedCount }: ReferenceExactUploaderProps) {
+export function ReferenceExactUploader({ onDataLoaded, loadedCount }: ReferenceExactUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileChange = useCallback(
@@ -16,23 +16,18 @@ export function ReferenceExactUploader({ onKeywordsLoaded, loadedCount }: Refere
       const reader = new FileReader()
       reader.onload = () => {
         const text = String(reader.result ?? '')
-        const set = parseReferenceExactCsv(text)
-        onKeywordsLoaded(set)
+        const result = parseReferenceExactCsvWithMetrics(text)
+        onDataLoaded(result)
       }
       reader.readAsText(file, 'UTF-8')
       e.target.value = ''
     },
-    [onKeywordsLoaded]
+    [onDataLoaded]
   )
 
   return (
-    <section className="panel auto-exact-reference">
-      <h3>Reference Exact CSV</h3>
-      <p className="panel-desc">
-        Upload your Amazon campaign export CSV that contains <strong>active EXACT campaigns</strong>. Campaign titles
-        should follow the format <code>(INTENT) I keyword I EXACT I SP I ASIN</code>. The app will extract the keyword
-        from each title and exclude those from the Promote to Exact list when the filter is on.
-      </p>
+    <section className="panel auto-exact-reference auto-exact-reference--compact">
+      <h2 className="auto-exact-reference-heading">Reference Exact CSV</h2>
       <div className="auto-exact-reference-upload">
         <input
           ref={fileInputRef}
@@ -42,8 +37,8 @@ export function ReferenceExactUploader({ onKeywordsLoaded, loadedCount }: Refere
           className="auto-exact-reference-file"
         />
         {loadedCount > 0 && (
-          <p className="auto-exact-reference-count">
-            <strong>{loadedCount}</strong> exact keywords loaded from reference CSV.
+          <p className="auto-exact-reference-count muted">
+            {loadedCount} exact keyword{loadedCount === 1 ? '' : 's'} loaded
           </p>
         )}
       </div>

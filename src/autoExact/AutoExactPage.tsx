@@ -21,7 +21,6 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   const [rows, setRows] = useState<string[][]>([])
   const [hasHeader, setHasHeader] = useState(true)
   const [mapping, setMapping] = useState<ColumnMapping>(DEFAULT_COLUMN_MAPPING)
-  const [sourceCampaign, setSourceCampaign] = useState('')
   const [criteria, setCriteria] = useState<PromotionCriteria>(DEFAULT_CRITERIA)
   const [wrapInBrackets, setWrapInBrackets] = useState(false)
   const [aggregateByTerm, setAggregateByTerm] = useState(false)
@@ -31,7 +30,6 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   const [targetAcosForCpc, setTargetAcosForCpc] = useState(37)
   const [referenceExactData, setReferenceExactData] = useState<ReferenceExactResult | null>(null)
   const [hideAlreadyExact, setHideAlreadyExact] = useState(false)
-  const [copyFeedback, setCopyFeedback] = useState(false)
   const [analyzed, setAnalyzed] = useState(false)
   const [sourceCsvNames, setSourceCsvNames] = useState<string[]>([])
 
@@ -77,31 +75,25 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
     setSelectedPromoteIndices(new Set(displayList.map((_, i) => i)))
   }, [displayList])
 
-  const selectedPromoteList = useMemo(
-    () => displayList.filter((_, i) => selectedPromoteIndices.has(i)),
-    [displayList, selectedPromoteIndices]
-  )
-
   const hasClicks = mapping.clicks >= 0 && rows.length > 0
 
   const handleAnalyze = useCallback(() => {
     setAnalyzed(true)
   }, [])
 
-  const showCopyFeedback = useCallback(() => {
-    setCopyFeedback(true)
-    setTimeout(() => setCopyFeedback(false), 2000)
-  }, [])
-
   return (
     <div className="auto-exact-tab">
-      <Uploader
-        currentRows={rows}
-        sourceCsvNames={sourceCsvNames}
-        onRowsLoaded={handleRowsLoaded}
-        sourceCampaign={sourceCampaign}
-        onSourceCampaignChange={setSourceCampaign}
-      />
+      <div className="auto-exact-page-top">
+        <Uploader
+          currentRows={rows}
+          sourceCsvNames={sourceCsvNames}
+          onRowsLoaded={handleRowsLoaded}
+        />
+        <ReferenceExactUploader
+          onDataLoaded={setReferenceExactData}
+          loadedCount={referenceExactKeywords.size}
+        />
+      </div>
 
       {rows.length > 0 && (
         <>
@@ -111,7 +103,7 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
             onMappingChange={setMapping}
             missingRequired={missingRequired}
           />
-          <CriteriaPanel criteria={criteria} onCriteriaChange={setCriteria} profiles={profiles} />
+          <CriteriaPanel criteria={criteria} onCriteriaChange={setCriteria} />
 
           <div className="auto-exact-aggregate-option">
             <label>
@@ -140,16 +132,9 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
             )}
           </div>
 
-          <ReferenceExactUploader
-            onDataLoaded={setReferenceExactData}
-            loadedCount={referenceExactKeywords.size}
-          />
-
           {analyzed && (
             <>
               <ExportButtons
-                selectedPromoteList={selectedPromoteList}
-                sourceCampaign={sourceCampaign}
                 wrapInBrackets={wrapInBrackets}
                 onWrapInBracketsChange={setWrapInBrackets}
                 intent={intent}
@@ -158,9 +143,7 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
                 onAsinChange={setAsin}
                 targetAcosForCpc={targetAcosForCpc}
                 onTargetAcosForCpcChange={setTargetAcosForCpc}
-                onCopyFeedback={showCopyFeedback}
               />
-              {copyFeedback && <span className="feedback">Copied to clipboard.</span>}
               <div className="auto-exact-hide-exact-bar">
                 <label className="auto-exact-hide-exact-toggle">
                   <input
@@ -194,9 +177,7 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
         </>
       )}
 
-      {rows.length === 0 && (
-        <p className="muted">Upload one or more Source CSVs or paste tab-delimited data to get started.</p>
-      )}
+      {rows.length === 0 && <p className="muted auto-exact-empty-hint">Load Source CSVs above to continue.</p>}
     </div>
   )
 }
