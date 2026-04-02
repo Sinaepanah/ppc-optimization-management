@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 interface ExportButtonsProps {
   wrapInBrackets: boolean
   onWrapInBracketsChange: (v: boolean) => void
@@ -7,6 +9,8 @@ interface ExportButtonsProps {
   onAsinChange: (v: string) => void
   targetAcosForCpc: number
   onTargetAcosForCpcChange: (v: number) => void
+  /** Shown below wrap checkbox when wrap is on (e.g. BracketKeywordCopyTable) */
+  bracketCopySection?: ReactNode
 }
 
 export function ExportButtons({
@@ -18,6 +22,7 @@ export function ExportButtons({
   onAsinChange,
   targetAcosForCpc,
   onTargetAcosForCpcChange,
+  bracketCopySection,
 }: ExportButtonsProps) {
   const useCampaignFormat = intent.trim() !== '' && asin.trim() !== ''
 
@@ -51,9 +56,21 @@ export function ExportButtons({
           </div>
         </div>
         {useCampaignFormat && (
-          <p className="auto-exact-export-hint">Copy/Export will use campaign title format for each selected keyword.</p>
+          <p className="auto-exact-export-hint">Copy table uses campaign title format for each selected keyword.</p>
         )}
+        <div className="auto-exact-export-option auto-exact-export-option--in-campaign">
+          <label>
+            <input type="checkbox" checked={wrapInBrackets} onChange={(e) => onWrapInBracketsChange(e.target.checked)} />
+            Show copy table{' '}
+            <span className="muted">
+              ([term] or campaign title when INTENT and ASIN are filled)
+            </span>
+          </label>
+        </div>
       </div>
+
+      {wrapInBrackets && bracketCopySection}
+
       <div className="auto-exact-export-target-acos">
         <div className="auto-exact-export-field">
           <label htmlFor="export-target-acos">Target ACoS for suggested CPC %</label>
@@ -67,12 +84,6 @@ export function ExportButtons({
           />
         </div>
         <p className="auto-exact-export-hint">Suggested CPC = (Target ACoS% × Sales) ÷ Clicks. Used in the results table.</p>
-      </div>
-      <div className="auto-exact-export-option">
-        <label>
-          <input type="checkbox" checked={wrapInBrackets} onChange={(e) => onWrapInBracketsChange(e.target.checked)} />
-          Wrap exact keywords in brackets [term] <span className="muted">(when not using campaign title format)</span>
-        </label>
       </div>
     </section>
   )

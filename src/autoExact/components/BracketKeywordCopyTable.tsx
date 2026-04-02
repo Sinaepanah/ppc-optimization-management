@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Copy } from 'lucide-react'
 import type { ScoredTerm } from '../types'
 
@@ -6,38 +6,68 @@ function bracketExact(term: string): string {
   return `[${term}]`
 }
 
-interface BracketKeywordCopyTableProps {
-  selectedTerms: ScoredTerm[]
+function campaignTitleLine(intent: string, keyword: string, asin: string): string {
+  return `(${intent.trim().toUpperCase()}) I ${keyword} I EXACT I SP I ${asin.trim()}`
 }
 
-export function BracketKeywordCopyTable({ selectedTerms }: BracketKeywordCopyTableProps) {
+interface BracketKeywordCopyTableProps {
+  selectedTerms: ScoredTerm[]
+  intent: string
+  asin: string
+  /** When true, render without outer panel chrome (nested inside Export) */
+  embedded?: boolean
+}
+
+export function BracketKeywordCopyTable({
+  selectedTerms,
+  intent,
+  asin,
+  embedded = false,
+}: BracketKeywordCopyTableProps) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
-  const copyLine = useCallback((term: string, key: string) => {
-    const text = bracketExact(term)
-    void navigator.clipboard.writeText(text)
-    setCopiedKey(key)
-    window.setTimeout(() => setCopiedKey(null), 1600)
-  }, [])
+  const useCampaignFormat = useMemo(() => intent.trim() !== '' && asin.trim() !== '', [intent, asin])
 
-  return (
-    <section className="panel auto-exact-bracket-copy">
-      <h3>Exact keywords in brackets</h3>
-      <p className="muted auto-exact-bracket-sub">Matches your selection in Promote to Exact.</p>
+  const lineForTerm = useCallback(
+    (term: string) =>
+      useCampaignFormat ? campaignTitleLine(intent, term, asin) : bracketExact(term),
+    [intent, asin, useCampaignFormat]
+  )
+
+  const copyLine = useCallback(
+    (term: string, key: string) => {
+      const text = lineForTerm(term)
+      void navigator.clipboard.writeText(text)
+      setCopiedKey(key)
+      window.setTimeout(() => setCopiedKey(null), 1600)
+    },
+    [lineForTerm]
+  )
+
+  const colLabel = useCampaignFormat ? 'Campaign title' : 'Bracket exact keyword'
+
+  const inner = (
+    <>
+      {embedded ? <h4 className="auto-exact-bracket-copy-title">Copy lines</h4> : <h3>Exact keywords in brackets</h3>}
+      <p className="muted auto-exact-bracket-sub">
+        {useCampaignFormat
+          ? 'Campaign title format for each selected Promote to Exact row.'
+          : 'Bracket format for each selected Promote to Exact row.'}
+      </p>
       {selectedTerms.length === 0 ? (
-        <p className="muted">Select one or more rows in the Promote to Exact table.</p>
+        <p className="muted">Select one or more rows in the Promote to Exact table below.</p>
       ) : (
         <div className="table-wrap table-wrap--compact">
           <table className="results-table results-table--compact auto-exact-bracket-table">
             <thead>
               <tr>
-                <th>Bracket exact keyword</th>
+                <th>{colLabel}</th>
                 <th className="auto-exact-bracket-copy-actions"> </th>
               </tr>
             </thead>
             <tbody>
               {selectedTerms.map((row, i) => {
-                const line = bracketExact(row.originalTerm)
+                const line = lineForTerm(row.originalTerm)
                 const key = `${row.normalizedTerm}-${i}`
                 return (
                   <tr key={key}>
@@ -63,6 +93,12 @@ export function BracketKeywordCopyTable({ selectedTerms }: BracketKeywordCopyTab
           </table>
         </div>
       )}
-    </section>
+    </>
   )
+
+  if (embedded) {
+    return <div className="auto-exact-bracket-copy auto-exact-bracket-copy--embedded">{inner}</div>
+  }
+
+  return <section className="panel auto-exact-bracket-copy">{inner}</section>
 }

@@ -81,8 +81,6 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
     [displayList, selectedPromoteIndices]
   )
 
-  const useCampaignFormat = useMemo(() => intent.trim() !== '' && asin.trim() !== '', [intent, asin])
-
   const hasClicks = mapping.clicks >= 0 && rows.length > 0
 
   const handleAnalyze = useCallback(() => {
@@ -151,6 +149,16 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
                 onAsinChange={setAsin}
                 targetAcosForCpc={targetAcosForCpc}
                 onTargetAcosForCpcChange={setTargetAcosForCpc}
+                bracketCopySection={
+                  wrapInBrackets ? (
+                    <BracketKeywordCopyTable
+                      selectedTerms={selectedPromoteList}
+                      intent={intent}
+                      asin={asin}
+                      embedded
+                    />
+                  ) : null
+                }
               />
               <div className="auto-exact-hide-exact-bar">
                 <label className="auto-exact-hide-exact-toggle">
@@ -180,9 +188,6 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
                 onSelectionChange={setSelectedPromoteIndices}
                 referenceExactMetrics={referenceExactData?.metricsByKeyword ?? null}
               />
-              {wrapInBrackets && !useCampaignFormat && (
-                <BracketKeywordCopyTable selectedTerms={selectedPromoteList} />
-              )}
             </>
           )}
         </>
