@@ -9,6 +9,7 @@ import { ColumnMapper, getMissingRequired } from './components/ColumnMapper'
 import { CriteriaPanel } from './components/CriteriaPanel'
 import { ExportButtons } from './components/ExportButtons'
 import { ReferenceExactUploader } from './components/ReferenceExactUploader'
+import { BracketKeywordCopyTable } from './components/BracketKeywordCopyTable'
 import { ResultsTables } from './components/ResultsTables'
 import { Uploader } from './components/Uploader'
 import type { ReferenceExactResult } from './utils/referenceExact'
@@ -74,6 +75,13 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   useEffect(() => {
     setSelectedPromoteIndices(new Set(displayList.map((_, i) => i)))
   }, [displayList])
+
+  const selectedPromoteList = useMemo(
+    () => displayList.filter((_, i) => selectedPromoteIndices.has(i)),
+    [displayList, selectedPromoteIndices]
+  )
+
+  const useCampaignFormat = useMemo(() => intent.trim() !== '' && asin.trim() !== '', [intent, asin])
 
   const hasClicks = mapping.clicks >= 0 && rows.length > 0
 
@@ -172,6 +180,9 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
                 onSelectionChange={setSelectedPromoteIndices}
                 referenceExactMetrics={referenceExactData?.metricsByKeyword ?? null}
               />
+              {wrapInBrackets && !useCampaignFormat && (
+                <BracketKeywordCopyTable selectedTerms={selectedPromoteList} />
+              )}
             </>
           )}
         </>
