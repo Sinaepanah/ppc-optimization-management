@@ -11,6 +11,7 @@ import { ExportButtons } from './components/ExportButtons'
 import { ReferenceExactUploader } from './components/ReferenceExactUploader'
 import { ResultsTables } from './components/ResultsTables'
 import { Uploader } from './components/Uploader'
+import type { ReferenceExactResult } from './utils/referenceExact'
 
 interface AutoExactPageProps {
   profiles: TopicProfile[]
@@ -28,20 +29,26 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   const [intent, setIntent] = useState('')
   const [asin, setAsin] = useState('')
   const [targetAcosForCpc, setTargetAcosForCpc] = useState(37)
-  const [referenceExactKeywords, setReferenceExactKeywords] = useState<Set<string>>(new Set())
+  const [referenceExactData, setReferenceExactData] = useState<ReferenceExactResult | null>(null)
   const [hideAlreadyExact, setHideAlreadyExact] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState(false)
   const [analyzed, setAnalyzed] = useState(false)
 
-  const handleRowsLoaded = useCallback((newRows: string[][], firstRowIsHeader: boolean) => {
-    setRows(newRows)
-    setHasHeader(firstRowIsHeader)
-    if (newRows.length > 0) {
-      const suggested = getHeaderSuggestions(newRows)
-      setMapping(suggested)
-    }
-    setAnalyzed(false)
-  }, [])
+  const handleRowsLoaded = useCallback(
+    (newRows: string[][], firstRowIsHeader: boolean, meta?: { sourceFileCount: number }) => {
+      setRows(newRows)
+      setHasHeader(firstRowIsHeader)
+      if (newRows.length > 0) {
+        const suggested = getHeaderSuggestions(newRows)
+        setMapping(suggested)
+      }
+      if (meta && meta.sourceFileCount > 1) {
+        setAggregateByTerm(true)
+      }
+      setAnalyzed(false)
+    },
+    []
+  )
 
   const missingRequired = useMemo(() => getMissingRequired(mapping), [mapping])
   const canAnalyze = rows.length > 0 && missingRequired.length === 0
@@ -56,6 +63,8 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   const scored = useMemo(() => runScoring(aggregated, criteria, profiles), [aggregated, criteria, profiles])
   const promoteList = useMemo(() => getPromoteList(scored), [scored])
   const reviewQueue = useMemo(() => getReviewQueue(scored), [scored])
+
+  const referenceExactKeywords = referenceExactData?.keywords ?? new Set<string>()
 
   const displayList = useMemo(() => {
     if (!hideAlreadyExact || referenceExactKeywords.size === 0) return promoteList
@@ -128,7 +137,7 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
           </div>
 
           <ReferenceExactUploader
-            onKeywordsLoaded={setReferenceExactKeywords}
+            onDataLoaded={setReferenceExactData}
             loadedCount={referenceExactKeywords.size}
           />
 
@@ -174,6 +183,7 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
                 targetAcosForCpc={targetAcosForCpc}
                 selectedIndices={selectedPromoteIndices}
                 onSelectionChange={setSelectedPromoteIndices}
+                referenceExactMetrics={referenceExactData?.metricsByKeyword ?? null}
               />
             </>
           )}
@@ -181,7 +191,7 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
       )}
 
       {rows.length === 0 && (
-        <p className="muted">Upload a CSV or paste tab-delimited data to get started.</p>
+        <p className="muted">Upload one or more Source CSVs or paste tab-delimited data to get started.</p>
       )}
     </div>
   )

@@ -1241,9 +1241,32 @@ input[type="file"]::file-selector-button:hover {
   margin: 1rem 0;
 }
 
+.auto-exact-csv .auto-exact-csv-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+}
+
 .auto-exact-csv .auto-exact-file-input {
   display: block;
+  margin-top: 0;
+}
+
+.auto-exact-csv-status {
   margin-top: 0.5rem;
+}
+
+.auto-exact-source-files {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  font-size: 0.85rem;
+  max-height: 6rem;
+  overflow-y: auto;
+}
+
+.auto-exact-source-files li {
+  margin: 0.15rem 0;
 }
 
 .auto-exact-paste label {

@@ -113,6 +113,34 @@ export function parseCSVText(text: string): string[][] {
   return parseCSV(text)
 }
 
+/** Compare two header rows (trim, strip BOM/quotes) for duplicate detection across Amazon batch exports */
+function rowsEqualAsHeaders(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const ca = normHeader(a[i] ?? '')
+    const cb = normHeader(b[i] ?? '')
+    if (ca !== cb) return false
+  }
+  return true
+}
+
+/**
+ * Combine multiple parsed Amazon Search Term CSVs into one row matrix.
+ * Each file typically includes the same header row; duplicate headers after the first file are skipped.
+ */
+export function mergeSourceCsvRows(parsedFiles: string[][][]): string[][] {
+  const nonEmpty = parsedFiles.filter((p) => p.length > 0)
+  if (nonEmpty.length === 0) return []
+  const out: string[][] = [...nonEmpty[0]]
+  const header = out[0]
+  for (let i = 1; i < nonEmpty.length; i++) {
+    const r = nonEmpty[i]
+    const skipFirst = rowsEqualAsHeaders(r[0], header)
+    out.push(...(skipFirst ? r.slice(1) : r))
+  }
+  return out
+}
+
 /** Parse pasted tab-delimited text into rows */
 export function parsePastedTabDelimited(text: string): string[][] {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
