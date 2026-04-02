@@ -52,6 +52,12 @@ export function Uploader({ currentRows, sourceCsvNames, onRowsLoaded }: Uploader
     [onRowsLoaded, currentRows, sourceCsvNames]
   )
 
+  const handleClear = useCallback(() => {
+    setCsvError(null)
+    onRowsLoaded([], true, { sourceFileNames: [] })
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }, [onRowsLoaded])
+
   return (
     <section className="panel auto-exact-upload">
       <h2>Input data</h2>
@@ -68,14 +74,19 @@ export function Uploader({ currentRows, sourceCsvNames, onRowsLoaded }: Uploader
         {csvLoading && <p className="muted auto-exact-csv-status">Loading…</p>}
         {csvError && <p className="auto-exact-error auto-exact-csv-status">{csvError}</p>}
         {sourceCsvNames.length > 0 && !csvLoading && (
-          <ul className="auto-exact-source-files" aria-label="Loaded source files">
-            <li className="muted">
-              {sourceCsvNames.length} file{sourceCsvNames.length === 1 ? '' : 's'} loaded
-              {sourceCsvNames.length <= 8
-                ? `: ${sourceCsvNames.join(', ')}`
-                : `: ${sourceCsvNames.slice(0, 8).join(', ')}… (+${sourceCsvNames.length - 8} more)`}
-            </li>
-          </ul>
+          <>
+            <ul className="auto-exact-source-files" aria-label="Loaded source files">
+              <li className="muted">
+                {sourceCsvNames.length} file{sourceCsvNames.length === 1 ? '' : 's'} loaded
+                {sourceCsvNames.length <= 8
+                  ? `: ${sourceCsvNames.join(', ')}`
+                  : `: ${sourceCsvNames.slice(0, 8).join(', ')}… (+${sourceCsvNames.length - 8} more)`}
+              </li>
+            </ul>
+            <button type="button" className="btn btn--secondary auto-exact-clear-source" onClick={handleClear}>
+              Clear
+            </button>
+          </>
         )}
       </div>
     </section>
