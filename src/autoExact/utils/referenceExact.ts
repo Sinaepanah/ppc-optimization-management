@@ -12,10 +12,45 @@ import { parseCSV } from '../../utils/csv'
 export function extractKeywordFromExactTitle(title: string): string | null {
   if (!title || typeof title !== 'string') return null
   const s = title.trim()
-  // Match ") I " or ") l " then capture until " I EXACT"
   const match = s.match(/\)\s*[Il]\s+(.+?)\s+I\s+EXACT\s+/i)
   if (match && match[1]) return match[1].trim()
   return null
+}
+
+/** ASIN segment at end of title: ... I SP I B09BHZWY78 */
+export function extractAsinFromExactTitle(title: string): string | null {
+  const s = String(title ?? '').trim()
+  const m = s.match(/\bI\s+SP\s+I\s+([A-Z0-9]{8,12})\s*$/i)
+  return m ? m[1].trim().toUpperCase() : null
+}
+
+/** Separator for Map keys: normalized keyword + ASIN (must not appear in norm or ASIN) */
+export const REFERENCE_KEY_SEP = '|||' as const
+
+export function referenceCompositeKey(normalizedTerm: string, asin: string): string {
+  return `${normalizedTerm}${REFERENCE_KEY_SEP}${asin.trim().toUpperCase()}`
+}
+
+/**
+ * Resolve reference metrics for a source row. When Export ASIN is set, match that product only.
+ * When unset, if multiple products share the same keyword, uses the first key in sorted order (deterministic).
+ */
+export function lookupReferenceMetrics(
+  map: Map<string, ReferenceExactMetrics> | null | undefined,
+  normalizedTerm: string,
+  preferredAsin: string | null
+): ReferenceExactMetrics | null {
+  if (!map || map.size === 0) return null
+  const pa = preferredAsin?.trim()
+  if (pa) {
+    const k = referenceCompositeKey(normalizedTerm, pa)
+    return map.get(k) ?? null
+  }
+  const prefix = `${normalizedTerm}${REFERENCE_KEY_SEP}`
+  const keys = [...map.keys()].filter((k) => k.startsWith(prefix))
+  if (keys.length === 0) return null
+  keys.sort()
+  return map.get(keys[0]) ?? null
 }
 
 /** Find column index whose header contains "campaign" (case-insensitive) */
@@ -51,30 +86,35 @@ export interface ReferenceExactMetrics {
 }
 
 export interface ReferenceExactResult {
+  /** Composite keys (normalized keyword + ASIN) — one per distinct keyword × product */
   keywords: Set<string>
   metricsByKeyword: Map<string, ReferenceExactMetrics>
-  /** Rows in the CSV that matched the EXACT title pattern (one per campaign line) */
+  /** Rows in the CSV that matched the EXACT title pattern and had an ASIN */
   campaignRowCount: number
+  /** Normalized keywords present in any reference row (for “hide already in Exact”) */
+  normalizedTermsInReference: Set<string>
 }
 
 /**
- * Parse Reference Exact CSV and return a Set of normalized keywords
- * that are already running as EXACT campaigns.
+ * Parse Reference Exact CSV and return a Set of composite keys (keyword+ASIN).
  */
 export function parseReferenceExactCsv(csvText: string): Set<string> {
   return parseReferenceExactCsvWithMetrics(csvText).keywords
 }
 
 /**
- * Parse Reference Exact CSV and return a Set of keywords plus metrics per keyword.
- * Aggregates metrics when same keyword appears in multiple rows.
+ * Parse Reference Exact CSV. Metrics aggregate only when the same normalized keyword **and** same ASIN
+ * appear in multiple rows (e.g. duplicate lines). Different ASINs = separate entries.
  */
 export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExactResult {
   const rows = parseCSV(csvText)
   const keywords = new Set<string>()
   const metricsByKeyword = new Map<string, ReferenceExactMetrics>()
+  const normalizedTermsInReference = new Set<string>()
 
-  if (rows.length < 2) return { keywords, metricsByKeyword, campaignRowCount: 0 }
+  if (rows.length < 2) {
+    return { keywords, metricsByKeyword, campaignRowCount: 0, normalizedTermsInReference }
+  }
 
   let campaignRowCount = 0
   const headers = rows[0].map((h) => (h ?? '').trim())
@@ -95,23 +135,26 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
     }
     if (!keyword) continue
 
+    const asin = extractAsinFromExactTitle(campaignCell)
+    if (!asin) continue
+
     const norm = normalize(keyword)
     if (!norm) continue
 
+    const key = referenceCompositeKey(norm, asin)
     campaignRowCount++
+    normalizedTermsInReference.add(norm)
+    keywords.add(key)
 
     const spend = spendCol >= 0 ? parseNum(row[spendCol] ?? '') : 0
     const sales = salesCol >= 0 ? parseNum(row[salesCol] ?? '') : 0
     const orders = ordersCol >= 0 ? parseNum(row[ordersCol] ?? '') : 0
     const clicks = clicksCol >= 0 ? parseNum(row[clicksCol] ?? '') : 0
 
-    // When sales is 0, acosPct is 0 as a placeholder only — performanceComparison uses exact.sales to avoid treating this as a real 0% ACOS.
     const acosPct = sales > 0 ? (spend / sales) * 100 : 0
     const cvrPct = clicks > 0 ? (orders / clicks) * 100 : null
 
-    keywords.add(norm)
-
-    const existing = metricsByKeyword.get(norm)
+    const existing = metricsByKeyword.get(key)
     if (existing) {
       existing.orders += orders
       existing.sales += sales
@@ -120,7 +163,7 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
       existing.acosPct = existing.sales > 0 ? (existing.spend / existing.sales) * 100 : 0
       existing.cvrPct = existing.clicks > 0 ? (existing.orders / existing.clicks) * 100 : null
     } else {
-      metricsByKeyword.set(norm, {
+      metricsByKeyword.set(key, {
         orders,
         sales,
         spend,
@@ -131,5 +174,5 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
     }
   }
 
-  return { keywords, metricsByKeyword, campaignRowCount }
+  return { keywords, metricsByKeyword, campaignRowCount, normalizedTermsInReference }
 }

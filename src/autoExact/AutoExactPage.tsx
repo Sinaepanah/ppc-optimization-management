@@ -65,12 +65,13 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   const promoteList = useMemo(() => getPromoteList(scored), [scored])
   const reviewQueue = useMemo(() => getReviewQueue(scored), [scored])
 
-  const referenceExactKeywords = referenceExactData?.keywords ?? new Set<string>()
+  const referenceNormalizedTerms = referenceExactData?.normalizedTermsInReference ?? new Set<string>()
+  const referenceTargetCount = referenceExactData?.keywords.size ?? 0
 
   const displayList = useMemo(() => {
-    if (!hideAlreadyExact || referenceExactKeywords.size === 0) return promoteList
-    return promoteList.filter((r) => !referenceExactKeywords.has(r.normalizedTerm))
-  }, [promoteList, hideAlreadyExact, referenceExactKeywords])
+    if (!hideAlreadyExact || referenceNormalizedTerms.size === 0) return promoteList
+    return promoteList.filter((r) => !referenceNormalizedTerms.has(r.normalizedTerm))
+  }, [promoteList, hideAlreadyExact, referenceNormalizedTerms])
 
   useEffect(() => {
     setSelectedPromoteIndices(new Set(displayList.map((_, i) => i)))
@@ -98,7 +99,7 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
         <ReferenceExactUploader
           onDataLoaded={setReferenceExactData}
           campaignRowCount={referenceExactData?.campaignRowCount ?? 0}
-          uniqueKeywordCount={referenceExactKeywords.size}
+          uniqueKeywordCount={referenceTargetCount}
         />
       </div>
 
@@ -167,16 +168,16 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
                     type="checkbox"
                     checked={hideAlreadyExact}
                     onChange={(e) => setHideAlreadyExact(e.target.checked)}
-                    disabled={referenceExactKeywords.size === 0}
+                    disabled={referenceNormalizedTerms.size === 0}
                   />
                   Hide keywords already in Exact campaigns
                 </label>
-                {referenceExactKeywords.size === 0 && (
+                {referenceNormalizedTerms.size === 0 && (
                   <span className="muted"> Upload Reference Exact CSV above to enable.</span>
                 )}
-                {hideAlreadyExact && referenceExactKeywords.size > 0 && (
+                {hideAlreadyExact && referenceNormalizedTerms.size > 0 && (
                   <span className="auto-exact-hide-exact-hint">
-                    Showing {displayList.length} of {promoteList.length} keywords (excluding {referenceExactKeywords.size} from reference).
+                    Showing {displayList.length} of {promoteList.length} keywords (excluding terms found in reference for any product).
                   </span>
                 )}
               </div>
@@ -188,6 +189,7 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
                 selectedIndices={selectedPromoteIndices}
                 onSelectionChange={setSelectedPromoteIndices}
                 referenceExactMetrics={referenceExactData?.metricsByKeyword ?? null}
+                referenceExportAsin={asin}
               />
             </>
           )}

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import type { ScoredTerm } from '../types'
 import { getPerformanceLabel } from '../utils/performanceComparison'
-import type { ReferenceExactMetrics } from '../utils/referenceExact'
+import { lookupReferenceMetrics, type ReferenceExactMetrics } from '../utils/referenceExact'
 
 /** CPC that would achieve target ACoS: (targetAcosPct/100 * sales) / clicks */
 function optimizedCpc(salesSum: number, clicksSum: number, targetAcosPct: number): number | null {
@@ -20,9 +20,20 @@ interface ResultsTablesProps {
   selectedIndices: Set<number>
   onSelectionChange: (indices: Set<number>) => void
   referenceExactMetrics?: Map<string, ReferenceExactMetrics> | null
+  /** When set, Performance compares to the Exact campaign for this ASIN; otherwise first matching product for that keyword */
+  referenceExportAsin: string
 }
 
-export function ResultsTables({ promoteList, reviewQueue, hasClicks, targetAcosForCpc, selectedIndices, onSelectionChange, referenceExactMetrics }: ResultsTablesProps) {
+export function ResultsTables({
+  promoteList,
+  reviewQueue,
+  hasClicks,
+  targetAcosForCpc,
+  selectedIndices,
+  onSelectionChange,
+  referenceExactMetrics,
+  referenceExportAsin,
+}: ResultsTablesProps) {
   const headerCheckRef = useRef<HTMLInputElement>(null)
   const [sortKey, setSortKey] = useState<PromoteSortKey>('originalTerm')
   const [sortAsc, setSortAsc] = useState(true)
@@ -165,9 +176,16 @@ export function ResultsTables({ promoteList, reviewQueue, hasClicks, targetAcosF
                       {hasClicks && <td>{row.cvrPct != null ? `${row.cvrPct.toFixed(1)}%` : '—'}</td>}
                       <td>{(() => { const c = optimizedCpc(row.salesSum, row.clicksSum, targetAcosForCpc); return c != null ? `$${c.toFixed(2)}` : '—' })()}</td>
                       <td className="auto-exact-td-performance">
-                        {referenceExactMetrics?.has(row.normalizedTerm)
-                          ? getPerformanceLabel(row, referenceExactMetrics.get(row.normalizedTerm)!, row.primaryMatchType)
-                          : '—'}
+                        {(() => {
+                          const exact = lookupReferenceMetrics(
+                            referenceExactMetrics ?? null,
+                            row.normalizedTerm,
+                            referenceExportAsin.trim() || null
+                          )
+                          return exact
+                            ? getPerformanceLabel(row, exact, row.primaryMatchType)
+                            : '—'
+                        })()}
                       </td>
                     </tr>
                   )

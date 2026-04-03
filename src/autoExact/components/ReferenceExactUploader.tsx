@@ -5,7 +5,7 @@ interface ReferenceExactUploaderProps {
   onDataLoaded: (data: ReferenceExactResult) => void
   /** Rows parsed from CSV (one per campaign line) */
   campaignRowCount: number
-  /** Distinct keywords after normalization (merged duplicates) */
+  /** Distinct keyword + ASIN targets (one per product) */
   uniqueKeywordCount: number
 }
 
@@ -45,10 +45,10 @@ export function ReferenceExactUploader({
         />
         {campaignRowCount > 0 && (
           <p className="auto-exact-reference-count muted">
-            {campaignRowCount} campaign{campaignRowCount === 1 ? '' : 's'} · {uniqueKeywordCount} unique keyword
+            {campaignRowCount} campaign{campaignRowCount === 1 ? '' : 's'} · {uniqueKeywordCount} keyword–ASIN pair
             {uniqueKeywordCount === 1 ? '' : 's'}
             {uniqueKeywordCount < campaignRowCount && (
-              <span className="auto-exact-reference-dup-hint"> (some titles share the same keyword)</span>
+              <span className="auto-exact-reference-dup-hint"> (duplicate CSV rows merged)</span>
             )}
           </p>
         )}
