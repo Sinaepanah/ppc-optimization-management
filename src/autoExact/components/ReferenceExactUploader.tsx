@@ -3,10 +3,17 @@ import { parseReferenceExactCsvWithMetrics, type ReferenceExactResult } from '..
 
 interface ReferenceExactUploaderProps {
   onDataLoaded: (data: ReferenceExactResult) => void
-  loadedCount: number
+  /** Rows parsed from CSV (one per campaign line) */
+  campaignRowCount: number
+  /** Distinct keywords after normalization (merged duplicates) */
+  uniqueKeywordCount: number
 }
 
-export function ReferenceExactUploader({ onDataLoaded, loadedCount }: ReferenceExactUploaderProps) {
+export function ReferenceExactUploader({
+  onDataLoaded,
+  campaignRowCount,
+  uniqueKeywordCount,
+}: ReferenceExactUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileChange = useCallback(
@@ -36,9 +43,13 @@ export function ReferenceExactUploader({ onDataLoaded, loadedCount }: ReferenceE
           onChange={handleFileChange}
           className="auto-exact-reference-file"
         />
-        {loadedCount > 0 && (
+        {campaignRowCount > 0 && (
           <p className="auto-exact-reference-count muted">
-            {loadedCount} exact keyword{loadedCount === 1 ? '' : 's'} loaded
+            {campaignRowCount} campaign{campaignRowCount === 1 ? '' : 's'} · {uniqueKeywordCount} unique keyword
+            {uniqueKeywordCount === 1 ? '' : 's'}
+            {uniqueKeywordCount < campaignRowCount && (
+              <span className="auto-exact-reference-dup-hint"> (some titles share the same keyword)</span>
+            )}
           </p>
         )}
       </div>

@@ -97,7 +97,8 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
         />
         <ReferenceExactUploader
           onDataLoaded={setReferenceExactData}
-          loadedCount={referenceExactKeywords.size}
+          campaignRowCount={referenceExactData?.campaignRowCount ?? 0}
+          uniqueKeywordCount={referenceExactKeywords.size}
         />
       </div>
 

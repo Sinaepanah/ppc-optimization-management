@@ -5,12 +5,15 @@ import { parseCSV } from '../../utils/csv'
  * Extract the KEYWORD from a campaign title in format:
  * (INTENT) I KEYWORD I EXACT I SP I ASIN
  * e.g. (WATER) I water test strips I EXACT I SP I B0DV3ZG4
+ *
+ * Also accepts a lowercase "l" instead of "I" after the intent (common typo in exports):
+ * (UTI) l uti test I EXACT ...
  */
 export function extractKeywordFromExactTitle(title: string): string | null {
   if (!title || typeof title !== 'string') return null
   const s = title.trim()
-  // Match ") I " then capture until " I EXACT"
-  const match = s.match(/\)\s*I\s+(.+?)\s+I\s+EXACT\s+/i)
+  // Match ") I " or ") l " then capture until " I EXACT"
+  const match = s.match(/\)\s*[Il]\s+(.+?)\s+I\s+EXACT\s+/i)
   if (match && match[1]) return match[1].trim()
   return null
 }
@@ -50,6 +53,8 @@ export interface ReferenceExactMetrics {
 export interface ReferenceExactResult {
   keywords: Set<string>
   metricsByKeyword: Map<string, ReferenceExactMetrics>
+  /** Rows in the CSV that matched the EXACT title pattern (one per campaign line) */
+  campaignRowCount: number
 }
 
 /**
@@ -69,8 +74,9 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
   const keywords = new Set<string>()
   const metricsByKeyword = new Map<string, ReferenceExactMetrics>()
 
-  if (rows.length < 2) return { keywords, metricsByKeyword }
+  if (rows.length < 2) return { keywords, metricsByKeyword, campaignRowCount: 0 }
 
+  let campaignRowCount = 0
   const headers = rows[0].map((h) => (h ?? '').trim())
   const campaignCol = findCampaignNameColumn(headers)
   const targetingCol = findColumn(headers, 'targeting', 'keyword')
@@ -91,6 +97,8 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
 
     const norm = normalize(keyword)
     if (!norm) continue
+
+    campaignRowCount++
 
     const spend = spendCol >= 0 ? parseNum(row[spendCol] ?? '') : 0
     const sales = salesCol >= 0 ? parseNum(row[salesCol] ?? '') : 0
@@ -123,5 +131,5 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
     }
   }
 
-  return { keywords, metricsByKeyword }
+  return { keywords, metricsByKeyword, campaignRowCount }
 }
