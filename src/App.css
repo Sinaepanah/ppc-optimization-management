@@ -53,6 +53,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 #root {
   min-height: 100vh;
 }
@@ -1741,31 +1753,49 @@ input[type="file"]::file-selector-button:hover {
   margin-bottom: 1.5rem;
 }
 
-/* Compact Promote to Exact table - no horizontal scroll */
+/* Compact results tables — shared */
 .table-wrap--compact {
   overflow-x: auto;
   max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
 }
+
+.table-wrap--promote,
+.table-wrap--review {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
 .results-table--compact {
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
   width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 .results-table--compact th,
 .results-table--compact td {
-  padding: 0.35rem 0.5rem;
+  padding: 0.42rem 0.55rem;
   border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
 }
 .results-table--compact th {
   font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 .results-table--compact .auto-exact-th-checkbox,
 .results-table--compact .auto-exact-td-checkbox {
-  width: 2rem;
-  padding: 0.35rem 0.25rem;
+  width: 2.5rem;
+  min-width: 2.5rem;
+  padding: 0.4rem 0.3rem;
 }
 .results-table--compact .results-table__keyword {
-  max-width: 10rem;
+  max-width: 11rem;
+  min-width: 7rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1781,26 +1811,172 @@ input[type="file"]::file-selector-button:hover {
 .results-table--compact th {
   text-align: right;
 }
-.results-table--compact th:nth-child(2) {
+.results-table--compact:not(.results-table--promote) th:nth-child(2) {
   text-align: left;
 }
-.results-table--compact th:last-child {
+.results-table--compact:not(.results-table--promote) th:last-child {
   text-align: left;
 }
 .results-table--compact td.auto-exact-td-performance {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   white-space: nowrap;
+}
+
+.results-table--review tbody tr:nth-child(even) {
+  background: rgba(248, 250, 252, 0.85);
+}
+.results-table--review tbody tr:hover td {
+  background: rgba(241, 245, 249, 0.95);
+}
+.results-table--review tbody tr:nth-child(even):hover td {
+  background: rgba(236, 242, 249, 0.98);
+}
+
+/* Promote table: sticky Term + checkbox, visual grouping, focus */
+.results-table--promote thead .auto-exact-th-checkbox,
+.results-table--promote tbody .auto-exact-td-checkbox {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  background: var(--color-surface);
+  box-shadow: 4px 0 10px -6px rgba(15, 23, 42, 0.12);
+}
+
+.results-table--promote thead .auto-exact-th-term,
+.results-table--promote tbody .results-table__keyword {
+  position: sticky;
+  left: 2.5rem;
+  z-index: 3;
+  background: var(--color-surface);
+  box-shadow: 4px 0 12px -6px rgba(15, 23, 42, 0.1);
+}
+
+.results-table--promote tbody tr:nth-child(even) td.auto-exact-td-checkbox,
+.results-table--promote tbody tr:nth-child(even) td.results-table__keyword {
+  background: rgba(248, 250, 252, 0.98);
+}
+
+.results-table--promote tbody tr:hover td.auto-exact-td-checkbox,
+.results-table--promote tbody tr:hover td.results-table__keyword {
+  background: rgba(241, 245, 249, 0.98);
+}
+
+.results-table--promote tbody tr:nth-child(even):hover td.auto-exact-td-checkbox,
+.results-table--promote tbody tr:nth-child(even):hover td.results-table__keyword {
+  background: rgba(236, 242, 249, 0.98);
+}
+
+.results-table--promote tbody tr:nth-child(even) td:not(.auto-exact-td-checkbox):not(.results-table__keyword):not(.auto-exact-td-ref):not(.auto-exact-td-performance) {
+  background: rgba(252, 252, 253, 0.95);
+}
+
+.results-table--promote tbody tr:hover td:not(.auto-exact-td-checkbox):not(.results-table__keyword):not(.auto-exact-td-performance):not(.auto-exact-td-ref) {
+  background: rgba(248, 250, 252, 0.98);
+}
+
+.auto-exact-th-ref--edge,
+.auto-exact-td-ref--edge {
+  border-left: 3px solid rgba(79, 70, 229, 0.32);
+}
+
+.auto-exact-th-sortable:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  z-index: 6;
+}
+
+.results-table--promote .auto-exact-cell--metric:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  z-index: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .results-table--promote .auto-exact-cell--metric {
+    transition: none;
+  }
 }
 
 .auto-exact-th-performance,
 .auto-exact-td-performance {
-  min-width: 4rem;
+  min-width: 6.25rem;
   white-space: nowrap;
   font-weight: 600;
   color: var(--color-primary);
 }
 .auto-exact-th-performance {
-  background: var(--color-bg-subtle);
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border-left: 1px solid var(--color-border);
+}
+
+.results-table--promote thead .auto-exact-th-group-ref {
+  text-align: center;
+  vertical-align: middle;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-primary-dark);
+  background: linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%);
+  border-bottom: 2px solid rgba(79, 70, 229, 0.22);
+}
+
+.results-table--promote thead tr:last-child .auto-exact-th-ref {
+  background: rgba(238, 242, 255, 0.55);
+  font-size: 0.72rem;
+}
+
+.results-table--promote tbody td.auto-exact-td-ref {
+  background: rgba(248, 250, 252, 0.95);
+}
+
+.results-table--promote tbody tr:hover td.auto-exact-td-ref {
+  background: rgba(238, 242, 255, 0.75);
+}
+
+.results-table--promote .auto-exact-cell--metric {
+  cursor: pointer;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.results-table--promote .auto-exact-cell--metric--disabled {
+  cursor: default;
+}
+
+.results-table--promote .auto-exact-cell--compare-highlight {
+  box-shadow: inset 0 0 0 2px rgba(79, 70, 229, 0.45);
+  border-radius: var(--radius-sm);
+}
+
+.results-table--promote .auto-exact-cell--compare-winner {
+  background: var(--color-success-bg) !important;
+  color: var(--color-success);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 2px rgba(5, 150, 105, 0.35);
+}
+
+.results-table--promote .auto-exact-cell--compare-dim {
+  background: rgba(241, 245, 249, 0.95) !important;
+  color: var(--color-text-muted);
+}
+
+.results-table--promote .auto-exact-cell--compare-tie {
+  background: rgba(254, 243, 199, 0.65) !important;
+  box-shadow: inset 0 0 0 2px rgba(217, 119, 6, 0.35);
+}
+
+.results-table--promote tbody tr:hover .auto-exact-cell--compare-winner {
+  background: #d1fae5 !important;
+}
+
+.results-table--promote thead tr:first-child .auto-exact-th-term,
+.results-table--promote thead tr:first-child .auto-exact-th-checkbox {
+  text-align: left;
+}
+
+.results-table--promote thead tr:first-child .auto-exact-th-performance {
+  text-align: left;
+  vertical-align: top;
 }
 
 /* ===== PPC Tool tab ===== */

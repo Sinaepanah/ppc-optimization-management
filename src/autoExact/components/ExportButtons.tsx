@@ -83,7 +83,10 @@ export function ExportButtons({
             onChange={(e) => onTargetAcosForCpcChange(Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 37)))}
           />
         </div>
-        <p className="auto-exact-export-hint">Suggested CPC = (Target ACoS% × Sales) ÷ Clicks. Used in the results table.</p>
+        <p className="auto-exact-export-hint">
+          Suggested max CPC = Target ACoS × AOV × min(CVR, 100%): AOV = Sales ÷ Orders, CVR = Orders ÷ Clicks. If orders exceed clicks (attribution),
+          CVR is capped so the bid matches usual max-CPC practice. Same formula in the results table.
+        </p>
       </div>
     </section>
   )
