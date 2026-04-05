@@ -45,6 +45,8 @@ export interface AggregatedTerm {
   rowCount: number
   /** Suggested CPC from CSV or Spend/Clicks (for Exact campaign) */
   suggestedCpc: number | null
+  /** Match type that contributed most spend (auto, broad, phrase) for performance comparison label */
+  primaryMatchType: string | null
 }
 
 /** Promotion criteria (thresholds) */
@@ -88,9 +90,9 @@ export const DEFAULT_COLUMN_MAPPING: ColumnMapping = {
 }
 
 export const DEFAULT_CRITERIA: PromotionCriteria = {
-  minOrders: 2,
-  minSales: 50,
-  maxACoS: 35,
+  minOrders: 1,
+  minSales: 10,
+  maxACoS: 200,
   minClicksEnabled: false,
   minClicks: 20,
   minCVREnabled: false,

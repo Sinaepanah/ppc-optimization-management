@@ -34,12 +34,19 @@ function termMatchesExcludeList(normalizedTerm: string, tokenList: string[]): bo
   return false
 }
 
+/** Amazon exports ACOS as decimal ratio (0.30 = 30%). Normalize to percentage. */
+function toAcosPercent(computed: number): number {
+  if (computed > 0 && computed < 1) return computed * 100
+  return computed
+}
+
 export function scoreTerm(
   agg: AggregatedTerm,
   criteria: PromotionCriteria,
   profiles: TopicProfile[]
 ): ScoredTerm {
-  const acosPct = agg.salesSum > 0 ? (agg.spendSum / agg.salesSum) * 100 : 0
+  let acosPct = agg.salesSum > 0 ? (agg.spendSum / agg.salesSum) * 100 : 0
+  acosPct = toAcosPercent(acosPct)
   const cvrPct = agg.clicksSum > 0 ? (agg.ordersSum / agg.clicksSum) * 100 : null
 
   let confidence = 0

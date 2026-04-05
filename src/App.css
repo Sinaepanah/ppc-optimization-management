@@ -59,7 +59,8 @@ body {
 
 /* ===== App layout ===== */
 .app {
-  max-width: 1120px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   padding: 2rem 1.5rem 3rem;
 }
@@ -380,7 +381,6 @@ body {
 }
 
 .campaign-input__name label,
-.campaign-input__paste label,
 .campaign-input__csv label {
   display: block;
   font-weight: 600;
@@ -389,8 +389,7 @@ body {
   margin-bottom: 0.5rem;
 }
 
-.campaign-input__name input,
-.campaign-input__paste textarea {
+.campaign-input__name input {
   display: block;
   width: 100%;
   max-width: 520px;
@@ -404,20 +403,10 @@ body {
   transition: border-color var(--transition), box-shadow var(--transition);
 }
 
-.campaign-input__name input:focus,
-.campaign-input__paste textarea:focus {
+.campaign-input__name input:focus {
   outline: none;
   border-color: var(--color-primary);
   box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.12);
-}
-
-.campaign-input__paste textarea {
-  min-height: 130px;
-  resize: vertical;
-}
-
-.campaign-input__paste .btn {
-  margin-top: 0.5rem;
 }
 
 .campaign-input__list ul {
@@ -714,18 +703,15 @@ body {
 .relevancy-tab {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  min-height: calc(100vh - 12rem);
+  gap: 1.5rem;
 }
 
 .relevancy-tab__main {
-  flex: 1 0 auto;
+  flex: 0 0 auto;
 }
 
 .relevancy-tab__profiles-section {
-  margin-top: auto;
   flex-shrink: 0;
-  padding-top: 1.5rem;
 }
 
 .relevancy-tab__profiles-section .profile-manager {
@@ -777,6 +763,13 @@ body {
 
 .relevancy-tab .panel {
   margin-bottom: 0;
+}
+
+/* No extra strip under the title when the panel has no body yet */
+.relevancy-panel:has(> h2:only-child) > h2 {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .relevancy-preset {
@@ -860,6 +853,71 @@ body {
   outline: none;
   border-color: var(--color-primary);
   box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.12);
+}
+
+.relevancy-config__campaign-list-heading {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  margin-bottom: 0.5rem;
+}
+
+.relevancy-config__campaign-checklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: 520px;
+  max-height: 14rem;
+  overflow-y: auto;
+  border: 2px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.relevancy-config__campaign-checklist li {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.relevancy-config__campaign-checklist li:last-child {
+  border-bottom: none;
+}
+
+.relevancy-config__campaign-checklist-selectall {
+  border-bottom: 2px solid var(--color-border-strong);
+}
+
+.relevancy-config .relevancy-config__campaign-option--select-all {
+  font-weight: 600;
+}
+
+.relevancy-config .relevancy-config__campaign-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  font-weight: 500;
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin: 0;
+}
+
+.relevancy-config .relevancy-config__campaign-option:hover {
+  background: var(--color-bg-subtle);
+}
+
+.relevancy-config .relevancy-config__campaign-option input[type='checkbox'] {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.relevancy-config__campaign-name {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .relevancy-controls {

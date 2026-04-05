@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import type { Campaign, TopicProfile, RelevancyResult } from '../types'
 import { runRelevancyFilter } from '../utils/relevancy'
 import { ExportControls, type ExportFormat } from './ExportControls'
@@ -8,27 +8,71 @@ interface RelevancyFilterPanelProps {
   profile: TopicProfile | null
 }
 
+/** Merge terms from several campaigns; first occurrence wins for display original when normalized duplicates. */
+function mergeCampaignTerms(selected: Campaign[]): Array<{ original: string; normalized: string }> {
+  const seen = new Set<string>()
+  const out: Array<{ original: string; normalized: string }> = []
+  for (const campaign of selected) {
+    for (const norm of campaign.terms) {
+      if (seen.has(norm)) continue
+      seen.add(norm)
+      out.push({
+        original: campaign.normalizedToOriginal.get(norm) ?? norm,
+        normalized: norm,
+      })
+    }
+  }
+  return out
+}
+
 export function RelevancyFilterPanel({ campaigns, profile }: RelevancyFilterPanelProps) {
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('')
+  const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([])
   const [searchFilter, setSearchFilter] = useState('')
   const [sortBy, setSortBy] = useState<'alpha' | 'reason'>('alpha')
   const [exportFormat, setExportFormat] = useState<ExportFormat>('plain')
   const [copyFeedback, setCopyFeedback] = useState(false)
 
-  const campaign = useMemo(
-    () => campaigns.find((c) => c.id === selectedCampaignId) ?? null,
-    [campaigns, selectedCampaignId]
-  )
+  useEffect(() => {
+    const valid = new Set(campaigns.map((c) => c.id))
+    setSelectedCampaignIds((prev) => prev.filter((id) => valid.has(id)))
+  }, [campaigns])
+
+  const selectedCampaigns = useMemo(() => {
+    const idSet = new Set(selectedCampaignIds)
+    return campaigns.filter((c) => idSet.has(c.id))
+  }, [campaigns, selectedCampaignIds])
+
+  const toggleCampaignSelection = useCallback((id: string) => {
+    setSelectedCampaignIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }, [])
+
+  const allCampaignsSelected =
+    campaigns.length > 0 && selectedCampaignIds.length === campaigns.length
+  const someCampaignsSelected =
+    selectedCampaignIds.length > 0 && selectedCampaignIds.length < campaigns.length
+
+  const selectAllRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const el = selectAllRef.current
+    if (el) el.indeterminate = someCampaignsSelected
+  }, [someCampaignsSelected])
+
+  const toggleSelectAllCampaigns = useCallback(() => {
+    setSelectedCampaignIds((prev) => {
+      if (campaigns.length === 0) return []
+      if (prev.length === campaigns.length) return []
+      return campaigns.map((c) => c.id)
+    })
+  }, [campaigns])
 
   const effectiveProfile = profile
 
-  const termsWithOriginal = useMemo(() => {
-    if (!campaign) return []
-    return campaign.terms.map((norm) => ({
-      original: campaign.normalizedToOriginal.get(norm) ?? norm,
-      normalized: norm,
-    }))
-  }, [campaign])
+  const termsWithOriginal = useMemo(
+    () => mergeCampaignTerms(selectedCampaigns),
+    [selectedCampaigns]
+  )
 
   const results = useMemo((): RelevancyResult[] => {
     if (!effectiveProfile || termsWithOriginal.length === 0) return []
@@ -66,32 +110,48 @@ export function RelevancyFilterPanel({ campaigns, profile }: RelevancyFilterPane
   return (
     <section className="panel relevancy-panel">
       <h2>Relevancy filter</h2>
-      <p className="panel-desc">
-        Select one campaign and a topic profile. Only terms that match an <strong>excluded</strong> topic (e.g. Drinking water, Pool) are listed below for negation. All other terms are kept.
-      </p>
 
-      {!profile ? (
-        <p className="muted">Create or select a topic profile in the Topic profiles section below to use the relevancy filter.</p>
-      ) : (
+      {profile && (
         <>
           <div className="relevancy-config">
             <div className="relevancy-config__row">
-              <label>
-                Campaign
-                <select
-                  value={selectedCampaignId}
-                  onChange={(e) => setSelectedCampaignId(e.target.value)}
-                >
-                  <option value="">— Select campaign —</option>
+              <div className="relevancy-config__campaign-list" role="group" aria-labelledby="relevancy-campaigns-label">
+                <div id="relevancy-campaigns-label" className="relevancy-config__campaign-list-heading">
+                  Campaigns
+                </div>
+                <ul className="relevancy-config__campaign-checklist">
+                  {campaigns.length > 0 && (
+                    <li className="relevancy-config__campaign-checklist-selectall">
+                      <label className="relevancy-config__campaign-option relevancy-config__campaign-option--select-all">
+                        <input
+                          ref={selectAllRef}
+                          type="checkbox"
+                          checked={allCampaignsSelected}
+                          onChange={toggleSelectAllCampaigns}
+                          aria-label="Select all campaigns"
+                        />
+                        <span className="relevancy-config__campaign-name">Select all</span>
+                      </label>
+                    </li>
+                  )}
                   {campaigns.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <li key={c.id}>
+                      <label className="relevancy-config__campaign-option">
+                        <input
+                          type="checkbox"
+                          checked={selectedCampaignIds.includes(c.id)}
+                          onChange={() => toggleCampaignSelection(c.id)}
+                        />
+                        <span className="relevancy-config__campaign-name">{c.name}</span>
+                      </label>
+                    </li>
                   ))}
-                </select>
-              </label>
+                </ul>
+              </div>
             </div>
           </div>
 
-          {campaign && (
+          {selectedCampaigns.length > 0 && (
             <>
               <div className="relevancy-report">
                 <h3 className="relevancy-report__title">
@@ -141,8 +201,8 @@ export function RelevancyFilterPanel({ campaigns, profile }: RelevancyFilterPane
             </>
           )}
 
-          {!selectedCampaignId && campaigns.length > 0 && (
-            <p className="muted">Select a campaign above to run the relevancy filter.</p>
+          {selectedCampaignIds.length === 0 && campaigns.length > 0 && (
+            <p className="muted">Select one or more campaigns above to run the relevancy filter.</p>
           )}
         </>
       )}

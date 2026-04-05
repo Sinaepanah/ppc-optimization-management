@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, type FC } from 'react'
+import { useState, useCallback, type FC } from 'react'
 import type { Campaign } from '../types'
 import { parseCSV, getColumnOptions, detectSearchTermColumn } from '../utils/csv'
 import { normalize } from '../utils/normalize'
@@ -14,86 +14,131 @@ function generateId(): string {
   return `camp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
+function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(reader.error ?? new Error('read failed'))
+    reader.readAsText(file, 'UTF-8')
+  })
+}
+
+function stripExtension(filename: string): string {
+  return filename.replace(/\.[^.]+$/, '').trim() || filename
+}
+
+function extractUniqueTermsFromRows(rows: string[][], col: number): string[] {
+  const terms: string[] = []
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+    const safeCol = Math.min(col, Math.max(0, (row?.length ?? 1) - 1))
+    const cell = row[safeCol]?.trim() ?? ''
+    const n = normalize(cell)
+    if (n) terms.push(cell)
+  }
+  const seen = new Set<string>()
+  const unique: string[] = []
+  for (const t of terms) {
+    const n = normalize(t)
+    if (n && !seen.has(n)) {
+      seen.add(n)
+      unique.push(t)
+    }
+  }
+  return unique
+}
+
+function buildCampaignName(
+  fileName: string,
+  batchIndex: number,
+  batchSize: number,
+  nameField: string,
+  existingCampaignCount: number
+): string {
+  const base = stripExtension(fileName)
+  if (batchSize === 1) {
+    return nameField.trim() || base || `Campaign ${existingCampaignCount + 1}`
+  }
+  if (nameField.trim()) {
+    return `${nameField.trim()} — ${base || `file ${batchIndex + 1}`}`
+  }
+  return base || `Campaign ${existingCampaignCount + batchIndex + 1}`
+}
+
 export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsChange }) => {
   const [name, setName] = useState('')
-  const [pasteText, setPasteText] = useState('')
   const [csvRows, setCsvRows] = useState<string[][] | null>(null)
   const [csvColumnIndex, setCsvColumnIndex] = useState(0)
   const [showColumnSelector, setShowColumnSelector] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  /** Queued uploads; each becomes its own campaign after column confirm */
+  const [pendingFiles, setPendingFiles] = useState<{ fileName: string; rows: string[][] }[] | null>(null)
+  const [csvLoading, setCsvLoading] = useState(false)
 
-  const addCampaign = useCallback(
-    (terms: string[]) => {
-      const built = buildCampaignFromTerms(terms)
-      onCampaignsChange((prev) => {
-        const campaign: Campaign = {
-          ...built,
-          id: generateId(),
-          name: name.trim() || `Campaign ${prev.length + 1}`,
-        }
-        return [...prev, campaign]
-      })
-      setName('')
-      setPasteText('')
-      setCsvRows(null)
-      setShowColumnSelector(false)
-    },
-    [name, onCampaignsChange]
-  )
-
-  const handlePasteSubmit = useCallback(() => {
-    const lines = pasteText
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-    const terms: string[] = []
-    for (const line of lines) {
-      const n = normalize(line)
-      if (n) terms.push(line)
-    }
-    if (terms.length === 0) return
-    addCampaign(terms)
-  }, [pasteText, addCampaign])
-
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
-      if (!file) return
-      const reader = new FileReader()
-      reader.onload = () => {
-        const text = String(reader.result ?? '')
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files
+    if (!list?.length) return
+    const files = Array.from(list)
+    setCsvLoading(true)
+    try {
+      const parsed: { fileName: string; rows: string[][] }[] = []
+      for (const file of files) {
+        const text = await readFileAsText(file)
         const rows = parseCSV(text)
-        if (rows.length === 0) return
-        setCsvRows(rows)
-        setCsvColumnIndex(getColumnOptions(rows).length ? detectSearchTermColumn(rows[0]) : 0)
-        setShowColumnSelector(true)
+        if (rows.length > 0) parsed.push({ fileName: file.name, rows })
       }
-      reader.readAsText(file, 'UTF-8')
+      if (parsed.length === 0) return
+      setPendingFiles(parsed)
+      const first = parsed[0].rows
+      setCsvRows(first)
+      setCsvColumnIndex(getColumnOptions(first).length ? detectSearchTermColumn(first[0]) : 0)
+      setShowColumnSelector(true)
+    } finally {
+      setCsvLoading(false)
       e.target.value = ''
-    },
-    []
-  )
+    }
+  }, [])
 
   const handleCsvConfirm = useCallback(() => {
-    if (!csvRows || csvRows.length < 1) return
-    const terms: string[] = []
+    if (!pendingFiles?.length || csvRows === null) return
     const col = csvColumnIndex
-    for (let i = 1; i < csvRows.length; i++) {
-      const cell = csvRows[i][col]?.trim() ?? ''
-      const n = normalize(cell)
-      if (n) terms.push(cell)
+    const existingCount = campaigns.length
+    const batch = pendingFiles.length
+
+    const toAdd: { terms: string[]; name: string }[] = []
+    pendingFiles.forEach((pf, idx) => {
+      const unique = extractUniqueTermsFromRows(pf.rows, col)
+      if (unique.length === 0) return
+      toAdd.push({
+        terms: unique,
+        name: buildCampaignName(pf.fileName, idx, batch, name, existingCount),
+      })
+    })
+
+    if (toAdd.length === 0) {
+      setPendingFiles(null)
+      setCsvRows(null)
+      setShowColumnSelector(false)
+      return
     }
-    const seen = new Set<string>()
-    const unique: string[] = []
-    for (const t of terms) {
-      const n = normalize(t)
-      if (n && !seen.has(n)) {
-        seen.add(n)
-        unique.push(t)
+
+    onCampaignsChange((prev) => {
+      let next = [...prev]
+      for (const { terms, name: cName } of toAdd) {
+        const built = buildCampaignFromTerms(terms)
+        next.push({
+          ...built,
+          id: generateId(),
+          name: cName,
+        })
       }
-    }
-    if (unique.length > 0) addCampaign(unique)
-  }, [csvRows, csvColumnIndex, addCampaign])
+      return next
+    })
+
+    setName('')
+    setCsvRows(null)
+    setPendingFiles(null)
+    setShowColumnSelector(false)
+  }, [pendingFiles, csvRows, csvColumnIndex, campaigns.length, name, onCampaignsChange])
 
   const removeCampaign = useCallback(
     (id: string) => {
@@ -105,7 +150,10 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
   return (
     <section className="panel campaign-input">
       <h2>Campaign Input</h2>
-      <p className="panel-desc">Add campaigns by pasting search terms or uploading a CSV. Terms are deduplicated per campaign.</p>
+      <p className="panel-desc">
+        Add campaigns by uploading one or more CSV files (bulk). Each file becomes its own campaign. Terms are
+        deduplicated per campaign.
+      </p>
 
       <div className="campaign-input__add">
         <div className="campaign-input__name">
@@ -115,37 +163,22 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Brand Campaign - Exact"
+            placeholder="Optional prefix; combined with file name when uploading multiple files"
           />
-        </div>
-
-        <div className="campaign-input__paste">
-          <label>Paste search terms (one per line)</label>
-          <textarea
-            value={pasteText}
-            onChange={(e) => setPasteText(e.target.value)}
-            placeholder="Paste one search term per line..."
-            rows={5}
-          />
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={handlePasteSubmit}
-            disabled={!pasteText.trim()}
-          >
-            Add campaign from paste
-          </button>
         </div>
 
         <div className="campaign-input__csv">
-          <label>Or upload CSV</label>
+          <label htmlFor="campaign-csv-input">Upload CSV (bulk select)</label>
           <input
-            ref={fileInputRef}
+            id="campaign-csv-input"
             type="file"
             accept=".csv,.txt"
+            multiple
             onChange={handleFileChange}
             className="campaign-input__file"
+            disabled={csvLoading}
           />
+          {csvLoading && <p className="muted campaign-input__csv-status">Loading files…</p>}
         </div>
       </div>
 
@@ -158,6 +191,7 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
             onConfirm={handleCsvConfirm}
             onCancel={() => {
               setCsvRows(null)
+              setPendingFiles(null)
               setShowColumnSelector(false)
             }}
           />
@@ -167,7 +201,7 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
       <div className="campaign-input__list">
         <h3>Your campaigns</h3>
         {campaigns.length === 0 ? (
-          <p className="muted">No campaigns yet. Paste terms or upload a CSV above.</p>
+          <p className="muted">No campaigns yet. Upload one or more CSV files above.</p>
         ) : (
           <ul>
             {campaigns.map((c) => (

@@ -2,6 +2,16 @@ import { normalize } from '../../utils/normalize'
 import type { AggregatedTerm, ColumnMapping } from '../types'
 import { parseRow, rowToRaw } from './csvHelpers'
 
+/** Normalize match type for display (auto, broad, phrase) */
+function normalizeMatchType(mt: string | null): string | null {
+  if (!mt || typeof mt !== 'string') return null
+  const s = mt.trim().toLowerCase()
+  if (s.includes('auto')) return 'Auto'
+  if (s.includes('broad')) return 'Broad'
+  if (s.includes('phrase')) return 'Phrase'
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : null
+}
+
 export function aggregateByNormalizedTerm(
   rows: string[][],
   mapping: ColumnMapping,
@@ -9,6 +19,7 @@ export function aggregateByNormalizedTerm(
 ): AggregatedTerm[] {
   const start = skipHeaderRow ? 1 : 0
   const map = new Map<string, AggregatedTerm>()
+  const spendByMatchType = new Map<string, Map<string, number>>()
 
   for (let i = start; i < rows.length; i++) {
     const raw = rowToRaw(rows[i])
@@ -25,6 +36,13 @@ export function aggregateByNormalizedTerm(
           ? parsed.spend / (parsed.clicks ?? 1)
           : null
     const campaignName = parsed.campaignName ?? null
+    const matchType = normalizeMatchType(parsed.matchType)
+
+    if (!spendByMatchType.has(norm)) spendByMatchType.set(norm, new Map())
+    const mtMap = spendByMatchType.get(norm)!
+    const key = matchType ?? '_unknown'
+    mtMap.set(key, (mtMap.get(key) ?? 0) + parsed.spend)
+
     const existing = map.get(norm)
     if (existing) {
       existing.spendSum += parsed.spend
@@ -46,11 +64,26 @@ export function aggregateByNormalizedTerm(
         campaignName,
         rowCount: 1,
         suggestedCpc,
+        primaryMatchType: matchType,
       })
     }
   }
 
-  return Array.from(map.values())
+  return Array.from(map.values()).map((agg) => {
+    const mtMap = spendByMatchType.get(agg.normalizedTerm)
+    if (mtMap && mtMap.size > 0) {
+      let maxSpend = 0
+      let best: string | null = null
+      for (const [k, v] of mtMap) {
+        if (k !== '_unknown' && v > maxSpend) {
+          maxSpend = v
+          best = k
+        }
+      }
+      agg.primaryMatchType = best ?? agg.primaryMatchType ?? null
+    }
+    return agg
+  })
 }
 
 /** One result per CSV row (no aggregation). Use when you want to see each row as in the file. */
@@ -84,6 +117,7 @@ export function oneRowPerCsvRow(
       campaignName: parsed.campaignName ?? null,
       rowCount: 1,
       suggestedCpc,
+      primaryMatchType: normalizeMatchType(parsed.matchType),
     })
   }
   return result
