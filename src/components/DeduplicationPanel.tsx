@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, type ReactNode } from 'react'
+import { ChevronUp, ChevronDown } from 'lucide-react'
 import type { Campaign, DuplicateResult } from '../types'
 import { findCrossCampaignDuplicates } from '../utils/deduplication'
 import { LARGE_DATA_WARNING } from '../types'
@@ -51,14 +52,6 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     setCopyFeedback(true)
     setTimeout(() => setCopyFeedback(false), 2000)
   }, [])
-
-  const [sortBy, setSortBy] = useState<'campaigns' | 'term'>('campaigns')
-  const sortedDuplicates = useMemo(() => {
-    if (sortBy === 'term') {
-      return [...duplicates].sort((a, b) => a.normalizedTerm.localeCompare(b.normalizedTerm))
-    }
-    return duplicates
-  }, [duplicates, sortBy])
 
   return (
     <section className="panel deduplication-panel">
@@ -125,12 +118,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                 label="Export duplicates"
               />
               {copyFeedback && <span className="feedback">Copied to clipboard.</span>}
-              <div className="sort-control">
-                Sort by:{' '}
-                <button type="button" className="btn btn--small btn--secondary" onClick={() => setSortBy('campaigns')}>Campaign count</button>
-                <button type="button" className="btn btn--small btn--secondary" onClick={() => setSortBy('term')}>Term A–Z</button>
-              </div>
-              <DupResultsTable results={sortedDuplicates} />
+              <DupResultsTable results={duplicates} />
             </>
           )}
 
@@ -143,25 +131,120 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
   )
 }
 
+type DupSortKey = 'term' | 'campaigns' | 'count' | 'clicksPerCsv' | 'totalClicks'
+
+function clicksPerCsvSortKey(r: DuplicateResult): string {
+  return r.campaigns.map((c) => String(r.clicksByCampaign.get(c) ?? 0)).join('\t')
+}
+
 function DupResultsTable({ results }: { results: DuplicateResult[] }) {
+  const [sortKey, setSortKey] = useState<DupSortKey>('count')
+  const [sortAsc, setSortAsc] = useState(false)
+
+  const sorted = useMemo(() => {
+    const arr = [...results]
+    arr.sort((a, b) => {
+      let cmp = 0
+      switch (sortKey) {
+        case 'term':
+          cmp = a.normalizedTerm.localeCompare(b.normalizedTerm)
+          break
+        case 'campaigns':
+          cmp = a.campaigns.join(', ').localeCompare(b.campaigns.join(', '))
+          break
+        case 'count':
+          cmp = a.campaignCount - b.campaignCount
+          break
+        case 'clicksPerCsv': {
+          cmp = clicksPerCsvSortKey(a).localeCompare(clicksPerCsvSortKey(b), undefined, { numeric: true })
+          if (cmp === 0) cmp = a.totalClicks - b.totalClicks
+          break
+        }
+        case 'totalClicks':
+          cmp = a.totalClicks - b.totalClicks
+          break
+        default:
+          cmp = 0
+      }
+      if (cmp === 0) cmp = a.normalizedTerm.localeCompare(b.normalizedTerm)
+      return sortAsc ? cmp : -cmp
+    })
+    return arr
+  }, [results, sortKey, sortAsc])
+
+  const handleSort = useCallback((key: DupSortKey) => {
+    setSortKey((prevKey) => {
+      if (prevKey === key) {
+        setSortAsc((a) => !a)
+        return prevKey
+      }
+      setSortAsc(key === 'term' || key === 'campaigns')
+      return key
+    })
+  }, [])
+
+  const SortTh = ({
+    colKey,
+    children,
+    align,
+  }: {
+    colKey: DupSortKey
+    children: ReactNode
+    align?: 'right'
+  }) => {
+    const ariaSort = sortKey === colKey ? (sortAsc ? 'ascending' : 'descending') : 'none'
+    const activate = () => handleSort(colKey)
+    return (
+      <th
+        scope="col"
+        tabIndex={0}
+        className="auto-exact-th-sortable dedup-th-sort"
+        aria-sort={ariaSort}
+        onClick={activate}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            activate()
+          }
+        }}
+      >
+        <span
+          className={['auto-exact-th-inner', align === 'right' ? 'dedup-th-inner--right' : ''].filter(Boolean).join(' ')}
+        >
+          {children}
+          {sortKey === colKey && (sortAsc ? <ChevronUp className="auto-exact-sort-icon" aria-hidden /> : <ChevronDown className="auto-exact-sort-icon" aria-hidden />)}
+        </span>
+      </th>
+    )
+  }
+
   return (
     <div className="table-wrap">
-      <table className="results-table">
+      <table className="results-table results-table--dedup-sort">
+        <caption className="sr-only">
+          Duplicate search terms across campaigns. Click a column heading to sort. Click again to reverse order.
+        </caption>
         <thead>
           <tr>
-            <th>Normalized term</th>
-            <th>Campaigns</th>
-            <th>Count</th>
-            <th>Clicks per CSV</th>
-            <th>Total clicks</th>
+            <SortTh colKey="term">Normalized term</SortTh>
+            <SortTh colKey="campaigns">Campaigns</SortTh>
+            <SortTh colKey="count" align="right">
+              Count
+            </SortTh>
+            <SortTh colKey="clicksPerCsv">Clicks per CSV</SortTh>
+            <SortTh colKey="totalClicks" align="right">
+              Total clicks
+            </SortTh>
           </tr>
         </thead>
         <tbody>
-          {results.map((r, i) => (
+          {sorted.map((r, i) => (
             <tr key={`${r.normalizedTerm}-${i}`}>
-              <td><code>{r.normalizedTerm}</code></td>
+              <td>
+                <code>{r.normalizedTerm}</code>
+              </td>
               <td>{r.campaigns.join(', ')}</td>
-              <td>{r.campaignCount}</td>
+              <td className="dedup-td-num">{r.campaignCount}</td>
               <td>
                 <ul className="example-list dedup-clicks-per-csv">
                   {r.campaigns.map((camp) => (
@@ -171,7 +254,7 @@ function DupResultsTable({ results }: { results: DuplicateResult[] }) {
                   ))}
                 </ul>
               </td>
-              <td>{r.totalClicks.toLocaleString()}</td>
+              <td className="dedup-td-num">{r.totalClicks.toLocaleString()}</td>
             </tr>
           ))}
         </tbody>

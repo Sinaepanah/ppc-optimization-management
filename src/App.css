@@ -598,6 +598,17 @@ body {
   color: var(--color-text);
 }
 
+.results-table--dedup-sort .dedup-th-inner--right {
+  display: inline-flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.results-table--dedup-sort .dedup-td-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .dedup-actions {
   margin-bottom: 0.75rem;
 }
