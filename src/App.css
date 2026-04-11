@@ -593,6 +593,11 @@ body {
   color: var(--color-text-muted);
 }
 
+.dedup-clicks-per-csv strong {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
 .dedup-actions {
   margin-bottom: 0.75rem;
 }

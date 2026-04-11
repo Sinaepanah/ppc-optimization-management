@@ -28,12 +28,26 @@ function replacer(_key: string, value: unknown): unknown {
 }
 
 function ensureMaps(campaigns: Campaign[]): Campaign[] {
-  return (campaigns || []).map((c) => ({
-    ...c,
-    normalizedToOriginal: c.normalizedToOriginal instanceof Map
-      ? c.normalizedToOriginal
-      : new Map((c.normalizedToOriginal as unknown as { data: [string, string][] })?.data || []),
-  }))
+  return (campaigns || []).map((c) => {
+    const normalizedToOriginal =
+      c.normalizedToOriginal instanceof Map
+        ? c.normalizedToOriginal
+        : new Map((c.normalizedToOriginal as unknown as { data: [string, string][] })?.data || [])
+    let normalizedToClicks: Map<string, number>
+    if (c.normalizedToClicks instanceof Map) {
+      normalizedToClicks = c.normalizedToClicks
+    } else if (c.normalizedToClicks && typeof c.normalizedToClicks === 'object' && 'data' in c.normalizedToClicks) {
+      normalizedToClicks = new Map(
+        (c.normalizedToClicks as unknown as { data: [string, number][] }).data || []
+      )
+    } else {
+      normalizedToClicks = new Map()
+    }
+    for (const k of normalizedToOriginal.keys()) {
+      if (!normalizedToClicks.has(k)) normalizedToClicks.set(k, 0)
+    }
+    return { ...c, normalizedToOriginal, normalizedToClicks }
+  })
 }
 
 export function loadCampaigns(): Campaign[] {

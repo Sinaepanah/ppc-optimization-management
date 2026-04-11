@@ -1,8 +1,7 @@
 import { useState, useCallback, type FC } from 'react'
 import type { Campaign } from '../types'
 import { parseCSV, getColumnOptions, detectSearchTermColumn } from '../utils/csv'
-import { normalize } from '../utils/normalize'
-import { buildCampaignFromTerms } from '../utils/deduplication'
+import { buildCampaignFromSearchTermRows } from '../utils/deduplication'
 import { CSVColumnSelector } from './CSVColumnSelector'
 
 interface CampaignInputProps {
@@ -25,27 +24,6 @@ function readFileAsText(file: File): Promise<string> {
 
 function stripExtension(filename: string): string {
   return filename.replace(/\.[^.]+$/, '').trim() || filename
-}
-
-function extractUniqueTermsFromRows(rows: string[][], col: number): string[] {
-  const terms: string[] = []
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i]
-    const safeCol = Math.min(col, Math.max(0, (row?.length ?? 1) - 1))
-    const cell = row[safeCol]?.trim() ?? ''
-    const n = normalize(cell)
-    if (n) terms.push(cell)
-  }
-  const seen = new Set<string>()
-  const unique: string[] = []
-  for (const t of terms) {
-    const n = normalize(t)
-    if (n && !seen.has(n)) {
-      seen.add(n)
-      unique.push(t)
-    }
-  }
-  return unique
 }
 
 function buildCampaignName(
@@ -104,12 +82,12 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
     const existingCount = campaigns.length
     const batch = pendingFiles.length
 
-    const toAdd: { terms: string[]; name: string }[] = []
+    const toAdd: { built: ReturnType<typeof buildCampaignFromSearchTermRows>; name: string }[] = []
     pendingFiles.forEach((pf, idx) => {
-      const unique = extractUniqueTermsFromRows(pf.rows, col)
-      if (unique.length === 0) return
+      const built = buildCampaignFromSearchTermRows(pf.rows, col)
+      if (built.terms.length === 0) return
       toAdd.push({
-        terms: unique,
+        built,
         name: buildCampaignName(pf.fileName, idx, batch, name, existingCount),
       })
     })
@@ -123,8 +101,7 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
 
     onCampaignsChange((prev) => {
       let next = [...prev]
-      for (const { terms, name: cName } of toAdd) {
-        const built = buildCampaignFromTerms(terms)
+      for (const { built, name: cName } of toAdd) {
         next.push({
           ...built,
           id: generateId(),
@@ -152,7 +129,8 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
       <h2>Campaign Input</h2>
       <p className="panel-desc">
         Add campaigns by uploading one or more CSV files (bulk). Each file becomes its own campaign. Terms are
-        deduplicated per campaign.
+        deduplicated per campaign. If the file includes a <strong>Clicks</strong> column, totals are summed per
+        keyword for the Deduplication tab.
       </p>
 
       <div className="campaign-input__add">

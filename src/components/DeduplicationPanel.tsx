@@ -64,7 +64,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     <section className="panel deduplication-panel">
       <h2>Cross-campaign deduplication</h2>
       <p className="panel-desc">
-        Select 2 or more campaigns to find search terms that appear in multiple campaigns. Use the results for Exact campaigns or Negative keywords.
+        Select 2 or more campaigns to find search terms that appear in multiple campaigns. Use the results for Exact campaigns or Negative keywords. When your CSVs include a <strong>Clicks</strong> column, the table shows clicks per file and a combined total for each keyword.
       </p>
 
       {campaigns.length === 0 ? (
@@ -152,7 +152,8 @@ function DupResultsTable({ results }: { results: DuplicateResult[] }) {
             <th>Normalized term</th>
             <th>Campaigns</th>
             <th>Count</th>
-            <th>Example per campaign</th>
+            <th>Clicks per CSV</th>
+            <th>Total clicks</th>
           </tr>
         </thead>
         <tbody>
@@ -162,12 +163,15 @@ function DupResultsTable({ results }: { results: DuplicateResult[] }) {
               <td>{r.campaigns.join(', ')}</td>
               <td>{r.campaignCount}</td>
               <td>
-                <ul className="example-list">
-                  {Array.from(r.exampleByCampaign.entries()).map(([camp, ex]) => (
-                    <li key={camp}><strong>{camp}:</strong> {ex}</li>
+                <ul className="example-list dedup-clicks-per-csv">
+                  {r.campaigns.map((camp) => (
+                    <li key={camp}>
+                      <strong>{camp}:</strong> {(r.clicksByCampaign.get(camp) ?? 0).toLocaleString()}
+                    </li>
                   ))}
                 </ul>
               </td>
+              <td>{r.totalClicks.toLocaleString()}</td>
             </tr>
           ))}
         </tbody>

@@ -72,3 +72,21 @@ export function getColumnOptions(rows: string[][]): string[] {
   if (rows.length === 0) return []
   return rows[0].map((h, i) => (h?.trim() || `Column ${i + 1}`))
 }
+
+/** Column index for bulk report "Clicks", or -1 if not found. */
+export function detectClicksColumn(headers: string[]): number {
+  const lower = headers.map((h) => (h || '').replace(/\ufeff/g, '').trim().toLowerCase())
+  for (let i = 0; i < lower.length; i++) {
+    const h = lower[i]
+    if (h === 'clicks' || h === 'click') return i
+  }
+  const idx = lower.findIndex((h) => h.includes('click') && !h.includes('through') && !h.includes('ctr'))
+  return idx >= 0 ? idx : -1
+}
+
+export function parseCsvNumber(val: string | undefined): number {
+  const s = String(val ?? '').trim().replace(/[$,£€\s]/g, '')
+  if (!s) return 0
+  const n = parseFloat(s.replace(/,/g, ''))
+  return Number.isFinite(n) ? n : 0
+}
