@@ -1,6 +1,6 @@
 import type { Campaign, DuplicateResult } from '../types'
 import { normalize } from './normalize'
-import { detectClicksColumn, parseCsvNumber } from './csv'
+import { detectClicksColumn, findSearchTermReportHeaderRow, parseCsvNumber } from './csv'
 
 export function findCrossCampaignDuplicates(
   campaigns: Campaign[],
@@ -70,12 +70,13 @@ export function buildCampaignFromSearchTermRows(
   if (rows.length < 2) {
     return { terms: [], normalizedToOriginal: new Map(), normalizedToClicks: new Map() }
   }
-  const headers = rows[0] ?? []
+  const headerRow = findSearchTermReportHeaderRow(rows)
+  const headers = rows[headerRow] ?? []
   const clicksCol = detectClicksColumn(headers)
   const normalizedToOriginal = new Map<string, string>()
   const normalizedToClicks = new Map<string, number>()
 
-  for (let i = 1; i < rows.length; i++) {
+  for (let i = headerRow + 1; i < rows.length; i++) {
     const row = rows[i]
     if (!row?.length) continue
     const safeTermCol = Math.min(termCol, Math.max(0, row.length - 1))

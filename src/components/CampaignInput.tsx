@@ -1,6 +1,6 @@
 import { useState, useCallback, type FC } from 'react'
 import type { Campaign } from '../types'
-import { parseCSV, getColumnOptions, detectSearchTermColumn } from '../utils/csv'
+import { parseCSV, detectSearchTermColumn, findSearchTermReportHeaderRow } from '../utils/csv'
 import { buildCampaignFromSearchTermRows } from '../utils/deduplication'
 import { CSVColumnSelector } from './CSVColumnSelector'
 
@@ -68,7 +68,9 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
       setPendingFiles(parsed)
       const first = parsed[0].rows
       setCsvRows(first)
-      setCsvColumnIndex(getColumnOptions(first).length ? detectSearchTermColumn(first[0]) : 0)
+      const headerRow = findSearchTermReportHeaderRow(first)
+      const header = first[headerRow] ?? first[0]
+      setCsvColumnIndex(header?.length ? detectSearchTermColumn(header) : 0)
       setShowColumnSelector(true)
     } finally {
       setCsvLoading(false)

@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "verify:dedup": "npx tsx scripts/verify-dedup-clicks.ts",
     "preview": "vite preview",
     "server": "node server/index.js"
   },

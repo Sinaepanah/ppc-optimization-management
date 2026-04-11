@@ -1,5 +1,5 @@
 import type { FC } from 'react'
-import { getColumnOptions, detectSearchTermColumn } from '../utils/csv'
+import { getColumnOptions, detectSearchTermColumn, findSearchTermReportHeaderRow } from '../utils/csv'
 
 interface CSVColumnSelectorProps {
   rows: string[][]
@@ -16,8 +16,10 @@ export const CSVColumnSelector: FC<CSVColumnSelectorProps> = ({
   onConfirm,
   onCancel,
 }) => {
-  const options = getColumnOptions(rows)
-  const suggested = rows.length ? detectSearchTermColumn(rows[0]) : 0
+  const headerRow = findSearchTermReportHeaderRow(rows)
+  const header = rows[headerRow] ?? rows[0]
+  const options = getColumnOptions(rows, headerRow)
+  const suggested = header?.length ? detectSearchTermColumn(header) : 0
 
   return (
     <div className="csv-column-selector">
