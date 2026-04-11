@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { parseCSV, detectClicksColumn, findSearchTermReportHeaderRow } from '../src/utils/csv.ts'
+import { parseCSV, detectClicksColumn, detectDelimiter, findSearchTermReportHeaderRow } from '../src/utils/csv.ts'
 import { buildCampaignFromSearchTermRows } from '../src/utils/deduplication.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -42,4 +42,10 @@ const raggedRows = [
 const raggedBuilt = buildCampaignFromSearchTermRows(raggedRows, 1)
 assert.equal(raggedBuilt.normalizedToClicks.get('ragged term test'), 0, 'short row: clicks missing, expect 0 not a wrong column')
 
-console.log('verify-dedup-clicks: OK (preamble + plain CSV + ragged)')
+const semi =
+  'Campaign name;Customer Search Term;Impressions;Clicks\nMyCamp;semi term;500;77\n'
+const semiRows = parseCSV(semi)
+assert.equal(detectDelimiter(semi), ';')
+assert.equal(buildCampaignFromSearchTermRows(semiRows, 1).normalizedToClicks.get('semi term'), 77)
+
+console.log('verify-dedup-clicks: OK (preamble + plain + ragged + semicolon)')

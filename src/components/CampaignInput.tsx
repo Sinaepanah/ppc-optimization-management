@@ -1,6 +1,7 @@
 import { useState, useCallback, type FC } from 'react'
 import type { Campaign } from '../types'
 import { parseCSV, detectSearchTermColumn, findSearchTermReportHeaderRow } from '../utils/csv'
+import { readEncodedTextFile } from '../utils/readEncodedTextFile'
 import { buildCampaignFromSearchTermRows } from '../utils/deduplication'
 import { CSVColumnSelector } from './CSVColumnSelector'
 
@@ -11,15 +12,6 @@ interface CampaignInputProps {
 
 function generateId(): string {
   return `camp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-}
-
-function readFileAsText(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result ?? ''))
-    reader.onerror = () => reject(reader.error ?? new Error('read failed'))
-    reader.readAsText(file, 'UTF-8')
-  })
 }
 
 function stripExtension(filename: string): string {
@@ -60,7 +52,7 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
     try {
       const parsed: { fileName: string; rows: string[][] }[] = []
       for (const file of files) {
-        const text = await readFileAsText(file)
+        const text = await readEncodedTextFile(file)
         const rows = parseCSV(text)
         if (rows.length > 0) parsed.push({ fileName: file.name, rows })
       }

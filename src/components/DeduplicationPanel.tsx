@@ -57,7 +57,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     <section className="panel deduplication-panel">
       <h2>Cross-campaign deduplication</h2>
       <p className="panel-desc">
-        Select 2 or more campaigns to find search terms that appear in multiple campaigns. Use the results for Exact campaigns or Negative keywords. When your CSVs include a <strong>Clicks</strong> column, the table shows clicks per file and a combined total for each keyword. If clicks stay at 0, remove those campaigns and re-upload so the file is parsed with the correct header row.
+        Select 2 or more campaigns to find search terms that appear in multiple campaigns. Use the results for Exact campaigns or Negative keywords. When your CSVs include a <strong>Clicks</strong> column, the table shows clicks per file and a combined total. Excel exports often use UTF-16 or semicolon separators — both are supported. If clicks stay at 0, remove those campaigns and import the files again (saved data keeps old zeros until you do).
       </p>
 
       {campaigns.length === 0 ? (
