@@ -132,56 +132,73 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
 }
 
 type DupSortKey = 'term' | 'campaigns' | 'count' | 'clicksPerCsv' | 'totalClicks'
+type DupSortDir = 'asc' | 'desc'
 
-function clicksPerCsvSortKey(r: DuplicateResult): string {
-  return r.campaigns.map((c) => String(r.clicksByCampaign.get(c) ?? 0)).join('\t')
+/** First click: text columns A→Z, numeric columns high→low (typical analytics). Toggle flips. */
+const DEFAULT_DIR: Record<DupSortKey, DupSortDir> = {
+  term: 'asc',
+  campaigns: 'asc',
+  count: 'desc',
+  clicksPerCsv: 'desc',
+  totalClicks: 'desc',
+}
+
+function compareDupRows(a: DuplicateResult, b: DuplicateResult, key: DupSortKey): number {
+  let cmp = 0
+  switch (key) {
+    case 'term':
+      cmp = a.normalizedTerm.localeCompare(b.normalizedTerm, undefined, { sensitivity: 'base' })
+      break
+    case 'campaigns':
+      cmp = a.campaigns.join('\u0001').localeCompare(b.campaigns.join('\u0001'), undefined, { sensitivity: 'base' })
+      break
+    case 'count':
+      cmp = a.campaignCount - b.campaignCount
+      break
+    case 'totalClicks':
+      cmp = a.totalClicks - b.totalClicks
+      break
+    case 'clicksPerCsv': {
+      cmp = a.totalClicks - b.totalClicks
+      if (cmp !== 0) break
+      const ac = a.campaigns.map((c) => a.clicksByCampaign.get(c) ?? 0)
+      const bc = b.campaigns.map((c) => b.clicksByCampaign.get(c) ?? 0)
+      for (let i = 0; i < Math.max(ac.length, bc.length); i++) {
+        const d = (ac[i] ?? 0) - (bc[i] ?? 0)
+        if (d !== 0) {
+          cmp = d
+          break
+        }
+      }
+      break
+    }
+    default:
+      cmp = 0
+  }
+  if (cmp === 0) cmp = a.normalizedTerm.localeCompare(b.normalizedTerm, undefined, { sensitivity: 'base' })
+  return cmp
 }
 
 function DupResultsTable({ results }: { results: DuplicateResult[] }) {
-  const [sortKey, setSortKey] = useState<DupSortKey>('count')
-  const [sortAsc, setSortAsc] = useState(false)
+  const [sort, setSort] = useState<{ key: DupSortKey; dir: DupSortDir }>({
+    key: 'count',
+    dir: 'desc',
+  })
+
+  const handleSort = useCallback((key: DupSortKey) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: DEFAULT_DIR[key] }
+    )
+  }, [])
 
   const sorted = useMemo(() => {
     const arr = [...results]
-    arr.sort((a, b) => {
-      let cmp = 0
-      switch (sortKey) {
-        case 'term':
-          cmp = a.normalizedTerm.localeCompare(b.normalizedTerm)
-          break
-        case 'campaigns':
-          cmp = a.campaigns.join(', ').localeCompare(b.campaigns.join(', '))
-          break
-        case 'count':
-          cmp = a.campaignCount - b.campaignCount
-          break
-        case 'clicksPerCsv': {
-          cmp = clicksPerCsvSortKey(a).localeCompare(clicksPerCsvSortKey(b), undefined, { numeric: true })
-          if (cmp === 0) cmp = a.totalClicks - b.totalClicks
-          break
-        }
-        case 'totalClicks':
-          cmp = a.totalClicks - b.totalClicks
-          break
-        default:
-          cmp = 0
-      }
-      if (cmp === 0) cmp = a.normalizedTerm.localeCompare(b.normalizedTerm)
-      return sortAsc ? cmp : -cmp
-    })
+    const mul = sort.dir === 'asc' ? 1 : -1
+    arr.sort((a, b) => mul * compareDupRows(a, b, sort.key))
     return arr
-  }, [results, sortKey, sortAsc])
-
-  const handleSort = useCallback((key: DupSortKey) => {
-    setSortKey((prevKey) => {
-      if (prevKey === key) {
-        setSortAsc((a) => !a)
-        return prevKey
-      }
-      setSortAsc(key === 'term' || key === 'campaigns')
-      return key
-    })
-  }, [])
+  }, [results, sort.key, sort.dir])
 
   const SortTh = ({
     colKey,
@@ -192,7 +209,8 @@ function DupResultsTable({ results }: { results: DuplicateResult[] }) {
     children: ReactNode
     align?: 'right'
   }) => {
-    const ariaSort = sortKey === colKey ? (sortAsc ? 'ascending' : 'descending') : 'none'
+    const active = sort.key === colKey
+    const ariaSort = active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'
     const activate = () => handleSort(colKey)
     return (
       <th
@@ -200,7 +218,7 @@ function DupResultsTable({ results }: { results: DuplicateResult[] }) {
         tabIndex={0}
         className="auto-exact-th-sortable dedup-th-sort"
         aria-sort={ariaSort}
-        onClick={activate}
+        onClick={() => activate()}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
@@ -212,7 +230,7 @@ function DupResultsTable({ results }: { results: DuplicateResult[] }) {
           className={['auto-exact-th-inner', align === 'right' ? 'dedup-th-inner--right' : ''].filter(Boolean).join(' ')}
         >
           {children}
-          {sortKey === colKey && (sortAsc ? <ChevronUp className="auto-exact-sort-icon" aria-hidden /> : <ChevronDown className="auto-exact-sort-icon" aria-hidden />)}
+          {active && (sort.dir === 'asc' ? <ChevronUp className="auto-exact-sort-icon" aria-hidden /> : <ChevronDown className="auto-exact-sort-icon" aria-hidden />)}
         </span>
       </th>
     )
@@ -238,8 +256,8 @@ function DupResultsTable({ results }: { results: DuplicateResult[] }) {
           </tr>
         </thead>
         <tbody>
-          {sorted.map((r, i) => (
-            <tr key={`${r.normalizedTerm}-${i}`}>
+          {sorted.map((r) => (
+            <tr key={r.normalizedTerm}>
               <td>
                 <code>{r.normalizedTerm}</code>
               </td>
