@@ -1,6 +1,6 @@
 import type { Campaign, DuplicateResult } from '../types'
 import { normalize } from './normalize'
-import { detectClicksColumn, findSearchTermReportHeaderRow, parseCsvNumber } from './csv'
+import { detectClicksColumn, findSearchTermReportHeaderRow, getCsvCell, parseCsvNumber } from './csv'
 
 export function findCrossCampaignDuplicates(
   campaigns: Campaign[],
@@ -73,22 +73,20 @@ export function buildCampaignFromSearchTermRows(
   const headerRow = findSearchTermReportHeaderRow(rows)
   const headers = rows[headerRow] ?? []
   const clicksCol = detectClicksColumn(headers)
+  const width = headers.length
   const normalizedToOriginal = new Map<string, string>()
   const normalizedToClicks = new Map<string, number>()
 
   for (let i = headerRow + 1; i < rows.length; i++) {
     const row = rows[i]
     if (!row?.length) continue
-    const safeTermCol = Math.min(termCol, Math.max(0, row.length - 1))
-    const rawTerm = row[safeTermCol]?.trim() ?? ''
+    const padded = row.length < width ? [...row, ...Array(width - row.length).fill('')] : row
+
+    const rawTerm = getCsvCell(padded, termCol).trim()
     const n = normalize(rawTerm)
     if (!n) continue
 
-    let clicks = 0
-    if (clicksCol >= 0) {
-      const safeClickCol = Math.min(clicksCol, Math.max(0, row.length - 1))
-      clicks = parseCsvNumber(row[safeClickCol])
-    }
+    const clicks = clicksCol >= 0 ? parseCsvNumber(getCsvCell(padded, clicksCol)) : 0
 
     if (!normalizedToOriginal.has(n)) {
       normalizedToOriginal.set(n, rawTerm)

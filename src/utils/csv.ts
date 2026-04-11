@@ -63,7 +63,9 @@ export function parseCSV(text: string): string[][] {
 export function normalizeHeaderCell(h: string): string {
   return (h || '')
     .replace(/^\ufeff/g, '')
+    .replace(/\u00a0/g, ' ')
     .replace(/^["'\s]+|["'\s]+$/g, '')
+    .replace(/^\[|\]$/g, '')
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ')
@@ -90,26 +92,45 @@ export function findSearchTermColumnIndex(headers: string[]): number {
   }
   const targeting = lower.findIndex((cell) => cell === 'targeting')
   if (targeting !== -1) return targeting
+  for (let i = 0; i < lower.length; i++) {
+    const cell = lower[i]
+    if (cell.includes('customer search term')) return i
+    if (
+      (cell === 'search term' ||
+        (cell.startsWith('search term') &&
+          !/rank|share|impression|volume|popularity|score|index/i.test(cell))) &&
+      !cell.includes('impression')
+    ) {
+      return i
+    }
+  }
   return -1
 }
 
 /**
- * First row that looks like an Amazon / bulk search-term table header:
- * has a recognizable term column and a Clicks metric column.
- * Many exports prepend title rows before the real header — row 0 is often wrong.
+ * Pick the header row: prefer the **widest** row that has a Clicks column (Amazon often prepends
+ * narrow title rows; the real header has many columns). If none, fall back to 0.
  */
-export function findSearchTermReportHeaderRow(rows: string[][], maxScan = 40): number {
+export function findSearchTermReportHeaderRow(rows: string[][], maxScan = 80): number {
   const max = Math.min(maxScan, rows.length)
+  let bestIdx = -1
+  let bestWidth = -1
+  for (let i = 0; i < max; i++) {
+    const r = rows[i]
+    if (!r?.length) continue
+    if (detectClicksColumn(r) < 0) continue
+    if (r.length > bestWidth) {
+      bestWidth = r.length
+      bestIdx = i
+    }
+  }
+  if (bestIdx >= 0) return bestIdx
   for (let i = 0; i < max; i++) {
     const r = rows[i]
     if (!r?.length || r.length < 3) continue
     const termIdx = findSearchTermColumnIndex(r)
     const clickIdx = detectClicksColumn(r)
     if (termIdx >= 0 && clickIdx >= 0) return i
-  }
-  for (let i = 0; i < max; i++) {
-    const r = rows[i]
-    if (r?.length && detectClicksColumn(r) >= 0) return i
   }
   return 0
 }
@@ -143,6 +164,11 @@ export function detectClicksColumn(headers: string[]): number {
   }
   for (let i = 0; i < cells.length; i++) {
     const h = cells[i]
+    const lettersOnly = h.replace(/[^a-z]/g, '')
+    if (lettersOnly === 'clicks' || lettersOnly === 'click') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
     if (/^clicks?\s*(\(|$|\[)/.test(h) || /^clicks?\s+\d/.test(h)) return i
   }
   for (let i = 0; i < cells.length; i++) {
@@ -151,7 +177,18 @@ export function detectClicksColumn(headers: string[]): number {
     if (isExcludedClicksHeader(h)) continue
     return i
   }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (/total.*clicks?|clicks?.*\(/.test(h) && !isExcludedClicksHeader(h)) return i
+  }
   return -1
+}
+
+/** Read cell at index; do not snap to last column when short (avoids reading Spend/CPC as Clicks). */
+export function getCsvCell(row: string[] | undefined | null, col: number): string {
+  if (!row || col < 0) return ''
+  if (col >= row.length) return ''
+  return row[col] ?? ''
 }
 
 export function parseCsvNumber(val: string | undefined): number {

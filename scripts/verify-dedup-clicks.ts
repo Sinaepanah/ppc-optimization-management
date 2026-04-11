@@ -34,4 +34,12 @@ const plainBuilt = buildCampaignFromSearchTermRows(plainRows, 1)
 assert.equal(plainBuilt.normalizedToClicks.get('water testing kit'), 10)
 assert.equal(plainBuilt.normalizedToClicks.get('pool water test'), 5)
 
-console.log('verify-dedup-clicks: OK (preamble + plain CSV)')
+// Ragged row: fewer cells than header; clicks column must not alias to last present cell
+const raggedRows = [
+  ['Campaign', 'Customer Search Term', 'Impressions', 'Clicks'],
+  ['X', 'ragged term test', '10'], // missing trailing columns
+]
+const raggedBuilt = buildCampaignFromSearchTermRows(raggedRows, 1)
+assert.equal(raggedBuilt.normalizedToClicks.get('ragged term test'), 0, 'short row: clicks missing, expect 0 not a wrong column')
+
+console.log('verify-dedup-clicks: OK (preamble + plain CSV + ragged)')
