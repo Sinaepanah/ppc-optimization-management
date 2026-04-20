@@ -35,6 +35,8 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
   const [singleSheetMinClicks, setSingleSheetMinClicks] = useState(20)
   const [singleSheetMinImpressions, setSingleSheetMinImpressions] = useState('0')
   const [singleSheetMinOrders, setSingleSheetMinOrders] = useState('0')
+  const [singleSheetOrdersRangeMin, setSingleSheetOrdersRangeMin] = useState('')
+  const [singleSheetOrdersRangeMax, setSingleSheetOrdersRangeMax] = useState('')
   const [singleSheetClicksMode, setSingleSheetClicksMode] = useState<ComparatorMode>('min')
   const [singleSheetImprMode, setSingleSheetImprMode] = useState<ComparatorMode>('min')
   const [singleSheetSalesMode, setSingleSheetSalesMode] = useState<ComparatorMode>('min')
@@ -147,11 +149,21 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     const clicksThreshold = Math.max(0, singleSheetMinClicks)
     const minImpr = Math.max(0, parseFloat(singleSheetMinImpressions) || 0)
     const minOrders = Math.max(0, parseFloat(singleSheetMinOrders) || 0)
+    const ordersRangeMin = singleSheetOrdersRangeMin.trim() === '' ? undefined : Math.max(0, parseFloat(singleSheetOrdersRangeMin) || 0)
+    const ordersRangeMax = singleSheetOrdersRangeMax.trim() === '' ? undefined : Math.max(0, parseFloat(singleSheetOrdersRangeMax) || 0)
     return base.filter(
-      (r) =>
+      (r) => {
+        const maxOrdersInAnyCampaign = Math.max(0, ...Array.from(r.purchasesByCampaign.values()))
+        const inOrdersRange =
+          (ordersRangeMin === undefined || maxOrdersInAnyCampaign >= ordersRangeMin) &&
+          (ordersRangeMax === undefined || maxOrdersInAnyCampaign <= ordersRangeMax)
+        return (
         cmp(r.totalClicks, clicksThreshold, singleSheetClicksMode) &&
         cmp(r.totalImpressions, minImpr, singleSheetImprMode) &&
-        cmp(r.totalPurchases, minOrders, singleSheetSalesMode)
+        cmp(maxOrdersInAnyCampaign, minOrders, singleSheetSalesMode) &&
+        inOrdersRange
+        )
+      }
     )
   }, [
     singleSheetText,
@@ -162,6 +174,8 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     singleSheetClicksMode,
     singleSheetImprMode,
     singleSheetSalesMode,
+    singleSheetOrdersRangeMin,
+    singleSheetOrdersRangeMax,
   ])
 
   return (
@@ -384,6 +398,26 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                 step="any"
                 value={singleSheetMinOrders}
                 onChange={(e) => setSingleSheetMinOrders(e.target.value)}
+                className="dedup-single-sheet__input"
+              />
+            </div>
+            <div className="dedup-single-sheet__pair">
+              <input
+                type="number"
+                min={0}
+                step="any"
+                placeholder="Range min"
+                value={singleSheetOrdersRangeMin}
+                onChange={(e) => setSingleSheetOrdersRangeMin(e.target.value)}
+                className="dedup-single-sheet__input"
+              />
+              <input
+                type="number"
+                min={0}
+                step="any"
+                placeholder="Range max"
+                value={singleSheetOrdersRangeMax}
+                onChange={(e) => setSingleSheetOrdersRangeMax(e.target.value)}
                 className="dedup-single-sheet__input"
               />
             </div>
