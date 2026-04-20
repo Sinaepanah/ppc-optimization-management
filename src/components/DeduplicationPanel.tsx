@@ -273,56 +273,63 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
       <h3>Single-sheet cross-campaign drain finder</h3>
       <p className="panel-desc">
         Upload one Sponsored Products/Brands bulk report that already contains many campaigns in a single sheet. This
-        feature finds keywords that repeat across multiple campaign names, have high combined clicks, and have no sales.
-        It is separate from the cross-campaign dedup flow above.
+        feature finds keywords that repeat across multiple campaign names and lets you filter by campaign count,
+        combined clicks, and either impressions or sales. It is separate from the cross-campaign dedup flow above.
       </p>
       <div className="dedup-single-sheet">
         <div className="dedup-single-sheet__controls">
-          <label htmlFor="dedup-single-sheet-input">Upload single report</label>
-          <input
-            id="dedup-single-sheet-input"
-            type="file"
-            accept={TABULAR_UPLOAD_ACCEPT}
-            onChange={handleSingleSheetChange}
-          />
-          <label>
-            Min campaigns
+          <div className="dedup-single-sheet__field dedup-single-sheet__field--file">
+            <label htmlFor="dedup-single-sheet-input" className="dedup-single-sheet__label">Upload single report</label>
+            <input
+              id="dedup-single-sheet-input"
+              type="file"
+              accept={TABULAR_UPLOAD_ACCEPT}
+              onChange={handleSingleSheetChange}
+              className="dedup-single-sheet__input dedup-single-sheet__input--file"
+            />
+          </div>
+          <label className="dedup-single-sheet__field">
+            <span className="dedup-single-sheet__label">Min campaigns</span>
             <input
               type="number"
               min={2}
               max={20}
               value={singleSheetMinCampaigns}
               onChange={(e) => setSingleSheetMinCampaigns(Math.max(2, parseInt(e.target.value, 10) || 2))}
+              className="dedup-single-sheet__input"
             />
           </label>
-          <label>
-            Min combined clicks
+          <label className="dedup-single-sheet__field">
+            <span className="dedup-single-sheet__label">Min combined clicks</span>
             <input
               type="number"
               min={0}
               max={1000000000}
               value={singleSheetMinClicks}
               onChange={(e) => setSingleSheetMinClicks(Math.max(0, parseInt(e.target.value, 10) || 0))}
+              className="dedup-single-sheet__input"
             />
           </label>
-          <label>
-            Extra filter
+          <label className="dedup-single-sheet__field">
+            <span className="dedup-single-sheet__label">Extra filter</span>
             <select
               value={singleSheetExtraMetric}
               onChange={(e) => setSingleSheetExtraMetric(e.target.value as 'impressions' | 'sales')}
+              className="dedup-single-sheet__input"
             >
               <option value="impressions">Impressions</option>
               <option value="sales">Sales</option>
             </select>
           </label>
-          <label>
-            Min selected metric
+          <label className="dedup-single-sheet__field">
+            <span className="dedup-single-sheet__label">Min selected metric</span>
             <input
               type="number"
               min={0}
               step="any"
               value={singleSheetExtraMin}
               onChange={(e) => setSingleSheetExtraMin(e.target.value)}
+              className="dedup-single-sheet__input"
             />
           </label>
         </div>
