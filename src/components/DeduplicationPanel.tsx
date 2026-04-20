@@ -32,8 +32,8 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
   const [singleSheetLoading, setSingleSheetLoading] = useState(false)
   const [singleSheetMinCampaigns, setSingleSheetMinCampaigns] = useState(2)
   const [singleSheetMinClicks, setSingleSheetMinClicks] = useState(20)
-  const [singleSheetExtraMetric, setSingleSheetExtraMetric] = useState<'impressions' | 'sales'>('impressions')
-  const [singleSheetExtraMin, setSingleSheetExtraMin] = useState('0')
+  const [singleSheetMinImpressions, setSingleSheetMinImpressions] = useState('0')
+  const [singleSheetMinSales, setSingleSheetMinSales] = useState('0')
 
   const toggleCampaign = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -135,11 +135,10 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
       Math.max(2, singleSheetMinCampaigns),
       Math.max(0, singleSheetMinClicks)
     )
-    const minExtra = Math.max(0, parseFloat(singleSheetExtraMin) || 0)
-    return base.filter((r) =>
-      singleSheetExtraMetric === 'impressions' ? r.totalImpressions >= minExtra : r.totalSales >= minExtra
-    )
-  }, [singleSheetText, singleSheetMinCampaigns, singleSheetMinClicks, singleSheetExtraMetric, singleSheetExtraMin])
+    const minImpr = Math.max(0, parseFloat(singleSheetMinImpressions) || 0)
+    const minSales = Math.max(0, parseFloat(singleSheetMinSales) || 0)
+    return base.filter((r) => r.totalImpressions >= minImpr && r.totalSales >= minSales)
+  }, [singleSheetText, singleSheetMinCampaigns, singleSheetMinClicks, singleSheetMinImpressions, singleSheetMinSales])
 
   return (
     <section className="panel deduplication-panel">
@@ -311,24 +310,24 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
             />
           </label>
           <label className="dedup-single-sheet__field">
-            <span className="dedup-single-sheet__label">Extra filter</span>
-            <select
-              value={singleSheetExtraMetric}
-              onChange={(e) => setSingleSheetExtraMetric(e.target.value as 'impressions' | 'sales')}
-              className="dedup-single-sheet__input"
-            >
-              <option value="impressions">Impressions</option>
-              <option value="sales">Sales</option>
-            </select>
-          </label>
-          <label className="dedup-single-sheet__field">
-            <span className="dedup-single-sheet__label">Min selected metric</span>
+            <span className="dedup-single-sheet__label">Min impressions</span>
             <input
               type="number"
               min={0}
               step="any"
-              value={singleSheetExtraMin}
-              onChange={(e) => setSingleSheetExtraMin(e.target.value)}
+              value={singleSheetMinImpressions}
+              onChange={(e) => setSingleSheetMinImpressions(e.target.value)}
+              className="dedup-single-sheet__input"
+            />
+          </label>
+          <label className="dedup-single-sheet__field">
+            <span className="dedup-single-sheet__label">Min sales</span>
+            <input
+              type="number"
+              min={0}
+              step="any"
+              value={singleSheetMinSales}
+              onChange={(e) => setSingleSheetMinSales(e.target.value)}
               className="dedup-single-sheet__input"
             />
           </label>
