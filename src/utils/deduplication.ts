@@ -374,6 +374,28 @@ function detectCampaignColumn(headers: string[]): number {
   return -1
 }
 
+function detectSingleSheetTermColumn(headers: string[]): number {
+  const cells = headers.map((h) => normalizeHeaderCell(h))
+
+  // Priority for single-sheet reports:
+  // 1) Customer Search Term (actual query)
+  // 2) Search Term / Query / Keyword variants
+  // 3) Targeting only as a last-resort fallback
+  for (let i = 0; i < cells.length; i++) {
+    if (cells[i] === 'customer search term' || cells[i].startsWith('customer search term')) return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (h === 'search term' || h.startsWith('search term')) return i
+    if (h === 'query' || h === 'keyword') return i
+    if (h.includes('customer search term')) return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    if (cells[i] === 'targeting') return i
+  }
+  return -1
+}
+
 function detectImpressionsColumn(headers: string[]): number {
   const cells = headers.map((h) => normalizeHeaderCell(h))
   for (let i = 0; i < cells.length; i++) {
@@ -407,17 +429,7 @@ export function findSingleSheetDuplicatesByCampaign(
   const headerRow = findSearchTermReportHeaderRow(rows)
   const headers = rows[headerRow] ?? []
   const width = headers.length
-  const termCol = headers.findIndex((h) => {
-    const n = normalizeHeaderCell(h)
-    return (
-      n === 'customer search term' ||
-      n === 'search term' ||
-      n === 'query' ||
-      n === 'keyword' ||
-      n === 'targeting' ||
-      n.includes('customer search term')
-    )
-  })
+  const termCol = detectSingleSheetTermColumn(headers)
   if (termCol < 0) return []
 
   const campaignCol = detectCampaignColumn(headers)
