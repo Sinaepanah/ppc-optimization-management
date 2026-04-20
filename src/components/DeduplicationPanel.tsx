@@ -749,6 +749,7 @@ function SingleSheetDrainTable({ results }: { results: SingleSheetDuplicateResul
             <th scope="col" className="dedup-th-static">Campaign count</th>
             <th scope="col">Campaign name</th>
             <th scope="col" className="dedup-th-static">Clicks in campaign</th>
+            <th scope="col" className="dedup-th-static">Sales in campaign</th>
             <th scope="col" className="dedup-th-static">Combined clicks</th>
           </tr>
         </thead>
@@ -769,6 +770,12 @@ function SingleSheetDrainTable({ results }: { results: SingleSheetDuplicateResul
                   <td className="dedup-td-source">{camp}</td>
                   <td className="dedup-td-num dedup-td-metric">
                     {(r.clicksByCampaign.get(camp) ?? 0).toLocaleString()}
+                  </td>
+                  <td className="dedup-td-num dedup-td-metric">
+                    {(r.attributedSalesByCampaign.get(camp) ?? 0).toLocaleString(undefined, {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 2,
+                    })}
                   </td>
                   {i === 0 && (
                     <td rowSpan={n} className="dedup-td-num dedup-td-combined">
