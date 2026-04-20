@@ -6,6 +6,7 @@ import {
   findCrossBatchDuplicates,
   findCrossCampaignDuplicates,
   findSingleSheetDuplicatesByCampaign,
+  type SingleSheetDuplicateResult,
 } from '../utils/deduplication'
 import { LARGE_DATA_WARNING } from '../types'
 import { ExportControls, type ExportFormat } from './ExportControls'
@@ -31,6 +32,8 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
   const [singleSheetLoading, setSingleSheetLoading] = useState(false)
   const [singleSheetMinCampaigns, setSingleSheetMinCampaigns] = useState(2)
   const [singleSheetMinClicks, setSingleSheetMinClicks] = useState(20)
+  const [singleSheetExtraMetric, setSingleSheetExtraMetric] = useState<'impressions' | 'sales'>('impressions')
+  const [singleSheetExtraMin, setSingleSheetExtraMin] = useState('0')
 
   const toggleCampaign = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -127,12 +130,16 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
 
   const singleSheetResults = useMemo(() => {
     if (!singleSheetText.trim()) return []
-    return findSingleSheetDuplicatesByCampaign(
+    const base = findSingleSheetDuplicatesByCampaign(
       singleSheetText,
       Math.max(2, singleSheetMinCampaigns),
       Math.max(0, singleSheetMinClicks)
     )
-  }, [singleSheetText, singleSheetMinCampaigns, singleSheetMinClicks])
+    const minExtra = Math.max(0, parseFloat(singleSheetExtraMin) || 0)
+    return base.filter((r) =>
+      singleSheetExtraMetric === 'impressions' ? r.totalImpressions >= minExtra : r.totalSales >= minExtra
+    )
+  }, [singleSheetText, singleSheetMinCampaigns, singleSheetMinClicks, singleSheetExtraMetric, singleSheetExtraMin])
 
   return (
     <section className="panel deduplication-panel">
@@ -296,6 +303,26 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
               max={1000000000}
               value={singleSheetMinClicks}
               onChange={(e) => setSingleSheetMinClicks(Math.max(0, parseInt(e.target.value, 10) || 0))}
+            />
+          </label>
+          <label>
+            Extra filter
+            <select
+              value={singleSheetExtraMetric}
+              onChange={(e) => setSingleSheetExtraMetric(e.target.value as 'impressions' | 'sales')}
+            >
+              <option value="impressions">Impressions</option>
+              <option value="sales">Sales</option>
+            </select>
+          </label>
+          <label>
+            Min selected metric
+            <input
+              type="number"
+              min={0}
+              step="any"
+              value={singleSheetExtraMin}
+              onChange={(e) => setSingleSheetExtraMin(e.target.value)}
             />
           </label>
         </div>
@@ -649,7 +676,7 @@ function DupResultsTable({ results, batchMode = false }: { results: DuplicateRes
   )
 }
 
-function SingleSheetDrainTable({ results }: { results: DuplicateResult[] }) {
+function SingleSheetDrainTable({ results }: { results: SingleSheetDuplicateResult[] }) {
   return (
     <div className="table-wrap table-wrap--sticky-header">
       <table className="results-table results-table--dedup-sort">

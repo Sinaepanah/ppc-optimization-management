@@ -374,11 +374,32 @@ function detectCampaignColumn(headers: string[]): number {
   return -1
 }
 
+function detectImpressionsColumn(headers: string[]): number {
+  const cells = headers.map((h) => normalizeHeaderCell(h))
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (h === 'impressions' || h === 'impression') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (!/\bimpressions?\b/.test(h)) continue
+    if (/share|rank|rate|market|viewable/.test(h)) continue
+    return i
+  }
+  return -1
+}
+
+export interface SingleSheetDuplicateResult extends DuplicateResult {
+  impressionsByCampaign: Map<string, number>
+  totalImpressions: number
+  totalSales: number
+}
+
 export function findSingleSheetDuplicatesByCampaign(
   text: string,
   minCampaigns = 2,
   minCombinedClicks = 0
-): DuplicateResult[] {
+): SingleSheetDuplicateResult[] {
   const sep = detectDelimiter(text)
   const rows = parseDelimitedText(text, sep)
   if (rows.length < 2) return []
@@ -405,12 +426,13 @@ export function findSingleSheetDuplicatesByCampaign(
   const sampleRows = rows.slice(headerRow + 1, headerRow + 220)
   let clicksCol = detectClicksColumn(headers)
   if (clicksCol < 0) clicksCol = inferClicksColumnFromSample(headers, sampleRows, termCol, width)
+  const impressionsCol = detectImpressionsColumn(headers)
 
   const purchasesCol = detectPurchasesColumn(headers)
   const spendCol = detectSpendColumn(headers)
   const attributedSalesCol = detectAttributedSalesColumn(headers)
 
-  type Metrics = { clicks: number; purchases: number; spend: number; attributedSales: number }
+  type Metrics = { clicks: number; impressions: number; purchases: number; spend: number; attributedSales: number }
   const byTerm = new Map<string, Map<string, Metrics>>()
 
   for (let i = headerRow + 1; i < rows.length; i++) {
@@ -424,22 +446,24 @@ export function findSingleSheetDuplicatesByCampaign(
     if (!norm || !campaign) continue
 
     const clicks = clicksCol >= 0 ? parseCsvNumber(getCsvCell(padded, clicksCol)) : 0
+    const impressions = impressionsCol >= 0 ? parseCsvNumber(getCsvCell(padded, impressionsCol)) : 0
     const purchases = purchasesCol >= 0 ? parseCsvNumber(getCsvCell(padded, purchasesCol)) : 0
     const spend = spendCol >= 0 ? parseCsvNumber(getCsvCell(padded, spendCol)) : 0
     const attrSales = attributedSalesCol >= 0 ? parseCsvNumber(getCsvCell(padded, attributedSalesCol)) : 0
 
     if (!byTerm.has(norm)) byTerm.set(norm, new Map())
     const byCampaign = byTerm.get(norm)!
-    const prev = byCampaign.get(campaign) ?? { clicks: 0, purchases: 0, spend: 0, attributedSales: 0 }
+    const prev = byCampaign.get(campaign) ?? { clicks: 0, impressions: 0, purchases: 0, spend: 0, attributedSales: 0 }
     byCampaign.set(campaign, {
       clicks: prev.clicks + clicks,
+      impressions: prev.impressions + impressions,
       purchases: prev.purchases + purchases,
       spend: prev.spend + spend,
       attributedSales: prev.attributedSales + attrSales,
     })
   }
 
-  const results: DuplicateResult[] = []
+  const results: SingleSheetDuplicateResult[] = []
   for (const [normalizedTerm, metricsByCampaign] of byTerm) {
     const campaigns = Array.from(metricsByCampaign.keys()).sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: 'base' })
@@ -447,41 +471,47 @@ export function findSingleSheetDuplicatesByCampaign(
     if (campaigns.length < minCampaigns) continue
 
     const clicksByCampaign = new Map<string, number>()
+    const impressionsByCampaign = new Map<string, number>()
     const purchasesByCampaign = new Map<string, number>()
     const spendByCampaign = new Map<string, number>()
     const attributedSalesByCampaign = new Map<string, number>()
     const acosPctByCampaign = new Map<string, number | null>()
 
     let totalClicks = 0
+    let totalImpressions = 0
     let totalPurchases = 0
     let totalSpend = 0
     let totalAttributedSales = 0
     for (const campaign of campaigns) {
       const m = metricsByCampaign.get(campaign)!
       clicksByCampaign.set(campaign, m.clicks)
+      impressionsByCampaign.set(campaign, m.impressions)
       purchasesByCampaign.set(campaign, m.purchases)
       spendByCampaign.set(campaign, m.spend)
       attributedSalesByCampaign.set(campaign, m.attributedSales)
       acosPctByCampaign.set(campaign, acosPctFromSpendAndSales(m.spend, m.attributedSales))
       totalClicks += m.clicks
+      totalImpressions += m.impressions
       totalPurchases += m.purchases
       totalSpend += m.spend
       totalAttributedSales += m.attributedSales
     }
     if (totalClicks < minCombinedClicks) continue
-    if (totalPurchases > 0 || totalAttributedSales > 0) continue
 
     results.push({
       normalizedTerm,
       campaigns,
       campaignCount: campaigns.length,
       clicksByCampaign,
+      impressionsByCampaign,
       totalClicks,
+      totalImpressions,
       purchasesByCampaign,
       totalPurchases,
       spendByCampaign,
       attributedSalesByCampaign,
       acosPctByCampaign,
+      totalSales: totalAttributedSales,
       totalAcosPct: acosPctFromSpendAndSales(totalSpend, totalAttributedSales),
     })
   }
