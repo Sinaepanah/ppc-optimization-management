@@ -1,7 +1,12 @@
 import { useState, useCallback, useMemo, type ReactNode } from 'react'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import type { Campaign, DuplicateResult } from '../types'
-import { findCrossCampaignDuplicates } from '../utils/deduplication'
+import {
+  buildCampaignFromTerms,
+  findCrossBatchDuplicates,
+  findCrossCampaignDuplicates,
+  findSingleSheetDuplicatesByCampaign,
+} from '../utils/deduplication'
 import { LARGE_DATA_WARNING } from '../types'
 import { ExportControls, type ExportFormat } from './ExportControls'
 
@@ -9,11 +14,22 @@ interface DeduplicationPanelProps {
   campaigns: Campaign[]
 }
 
+const CUSTOM_MANUAL_KEYWORDS_ID = '__custom_manual_keywords__'
+const CUSTOM_MANUAL_KEYWORDS_LABEL = 'CUSTOM MANUAL KEYWORDS'
+
 export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
+  const [dedupMode, setDedupMode] = useState<'campaigns' | 'batches'>('campaigns')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [minCampaigns, setMinCampaigns] = useState(2)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('plain')
   const [copyFeedback, setCopyFeedback] = useState(false)
+  const [manualKeywordText, setManualKeywordText] = useState('')
+  const [singleSheetText, setSingleSheetText] = useState('')
+  const [singleSheetFileName, setSingleSheetFileName] = useState('')
+  const [singleSheetError, setSingleSheetError] = useState<string | null>(null)
+  const [singleSheetLoading, setSingleSheetLoading] = useState(false)
+  const [singleSheetMinCampaigns, setSingleSheetMinCampaigns] = useState(2)
+  const [singleSheetMinClicks, setSingleSheetMinClicks] = useState(20)
 
   const toggleCampaign = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -34,17 +50,50 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     [campaigns, selectedIds]
   )
 
+  const manualKeywordCampaign = useMemo((): Campaign | null => {
+    const lines = manualKeywordText
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (lines.length === 0) return null
+    const fromTerms = buildCampaignFromTerms(lines)
+    return {
+      id: CUSTOM_MANUAL_KEYWORDS_ID,
+      name: CUSTOM_MANUAL_KEYWORDS_LABEL,
+      bundleName: CUSTOM_MANUAL_KEYWORDS_LABEL,
+      ...fromTerms,
+    }
+  }, [manualKeywordText])
+
+  const dedupSources = useMemo(() => {
+    const list = [...selectedCampaigns]
+    if (manualKeywordCampaign) list.push(manualKeywordCampaign)
+    return list
+  }, [selectedCampaigns, manualKeywordCampaign])
+
   const totalTerms = useMemo(
-    () => selectedCampaigns.reduce((sum, c) => sum + c.terms.length, 0),
-    [selectedCampaigns]
+    () => dedupSources.reduce((sum, c) => sum + c.terms.length, 0),
+    [dedupSources]
   )
 
   const showLargeWarning = totalTerms >= LARGE_DATA_WARNING
 
+  const dedupBatchCount = useMemo(() => {
+    const keys = new Set<string>()
+    for (const c of dedupSources) {
+      keys.add(c.bundleName?.trim() || `__ungrouped:${c.id}`)
+    }
+    return keys.size
+  }, [dedupSources])
+
   const duplicates = useMemo(() => {
-    if (selectedCampaigns.length < 2) return []
-    return findCrossCampaignDuplicates(selectedCampaigns, minCampaigns)
-  }, [selectedCampaigns, minCampaigns])
+    if (dedupSources.length < 2) return []
+    if (dedupMode === 'batches') {
+      if (dedupBatchCount < 2) return []
+      return findCrossBatchDuplicates(dedupSources, minCampaigns)
+    }
+    return findCrossCampaignDuplicates(dedupSources, minCampaigns)
+  }, [dedupSources, minCampaigns, dedupMode, dedupBatchCount])
 
   const duplicateTerms = useMemo(() => duplicates.map((d) => d.normalizedTerm), [duplicates])
 
@@ -53,11 +102,47 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     setTimeout(() => setCopyFeedback(false), 2000)
   }, [])
 
+  const handleSingleSheetChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!(file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.txt'))) {
+      setSingleSheetError('Please select a CSV file')
+      e.target.value = ''
+      return
+    }
+    setSingleSheetLoading(true)
+    setSingleSheetError(null)
+    try {
+      const text = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result ?? ''))
+        reader.onerror = () => reject(reader.error ?? new Error('read failed'))
+        reader.readAsText(file, 'UTF-8')
+      })
+      setSingleSheetText(text)
+      setSingleSheetFileName(file.name)
+    } catch {
+      setSingleSheetError('Failed to read the file')
+    } finally {
+      setSingleSheetLoading(false)
+      e.target.value = ''
+    }
+  }, [])
+
+  const singleSheetResults = useMemo(() => {
+    if (!singleSheetText.trim()) return []
+    return findSingleSheetDuplicatesByCampaign(
+      singleSheetText,
+      Math.max(2, singleSheetMinCampaigns),
+      Math.max(0, singleSheetMinClicks)
+    )
+  }, [singleSheetText, singleSheetMinCampaigns, singleSheetMinClicks])
+
   return (
     <section className="panel deduplication-panel">
       <h2>Cross-campaign deduplication</h2>
       <p className="panel-desc">
-        Select 2 or more campaigns to find search terms that appear in multiple campaigns. Use the results for Exact campaigns or Negative keywords. When your CSVs include a <strong>Clicks</strong> column, the table shows clicks per file and a combined total. Excel exports often use UTF-16 or semicolon separators — both are supported. If clicks stay at 0, remove those campaigns and import the files again (saved data keeps old zeros until you do).
+        Select 2 or more campaigns to find search terms that appear in multiple campaigns. Use the results for Exact campaigns or Negative keywords. <strong>As is</strong> compares each uploaded file; <strong>Batch mode</strong> merges metrics per bundle name from Campaign Input (and single files as their own batch) and compares batches. Each duplicate term uses one block of rows, then a combined totals row with blended <strong>ACOS</strong> when your CSVs include spend and attributed sales. Excel exports often use UTF-16 or semicolon separators — both are supported. Re-import files after app updates so metrics refresh.
       </p>
 
       {campaigns.length === 0 ? (
@@ -65,6 +150,51 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
       ) : (
         <>
           <div className="dedup-select">
+            <fieldset className="dedup-mode-fieldset">
+              <legend className="dedup-mode-legend">Comparison mode</legend>
+              <div className="dedup-mode-options">
+                <label className="dedup-mode-option">
+                  <input
+                    type="radio"
+                    name="dedup-mode"
+                    checked={dedupMode === 'campaigns'}
+                    onChange={() => setDedupMode('campaigns')}
+                  />
+                  <span>As is (per file)</span>
+                </label>
+                <label className="dedup-mode-option">
+                  <input
+                    type="radio"
+                    name="dedup-mode"
+                    checked={dedupMode === 'batches'}
+                    onChange={() => setDedupMode('batches')}
+                  />
+                  <span>Batch mode (aggregate per bundle)</span>
+                </label>
+              </div>
+            </fieldset>
+            <div className="dedup-manual-keywords">
+              <label className="dedup-manual-keywords__label" htmlFor="dedup-manual-keywords-input">
+                {CUSTOM_MANUAL_KEYWORDS_LABEL}
+              </label>
+              <textarea
+                id="dedup-manual-keywords-input"
+                className="dedup-manual-keywords__textarea"
+                rows={5}
+                spellCheck={false}
+                autoComplete="off"
+                placeholder="One keyword per line (same normalization as uploaded search terms). Counts as an extra source alongside the files you select."
+                value={manualKeywordText}
+                onChange={(e) => setManualKeywordText(e.target.value)}
+              />
+              {manualKeywordCampaign && (
+                <p className="dedup-manual-keywords__meta muted">
+                  {manualKeywordCampaign.terms.length} term
+                  {manualKeywordCampaign.terms.length === 1 ? '' : 's'} — one extra source named{' '}
+                  {CUSTOM_MANUAL_KEYWORDS_LABEL}.
+                </p>
+              )}
+            </div>
             <div className="dedup-select__campaigns">
               <button type="button" className="btn btn--primary btn--small" onClick={selectAll}>
                 {selectedIds.size === campaigns.length ? 'Deselect all' : 'Select all'}
@@ -91,7 +221,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                   value={minCampaigns}
                   onChange={(e) => setMinCampaigns(Math.max(2, parseInt(e.target.value, 10) || 2))}
                 />{' '}
-                campaigns
+                {dedupMode === 'batches' ? 'batches' : 'campaigns'}
               </label>
             </div>
           </div>
@@ -104,10 +234,16 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
             )}
           </div>
 
+          {dedupMode === 'batches' && dedupSources.length >= 2 && dedupBatchCount < 2 && (
+            <p className="muted dedup-batch-hint">
+              Batch mode needs selections from at least two batches (different bundle names, or mix bundled and unbundled files as separate batches).
+            </p>
+          )}
+
           {duplicates.length > 0 && (
             <>
               <p className="dedup-summary">
-                <strong>{duplicates.length}</strong> terms appear in {minCampaigns}+ campaigns.
+                <strong>{duplicates.length}</strong> terms appear in {minCampaigns}+ {dedupMode === 'batches' ? 'batches' : 'campaigns'}.
               </p>
               <ExportControls
                 items={duplicateTerms}
@@ -118,20 +254,87 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                 label="Export duplicates"
               />
               {copyFeedback && <span className="feedback">Copied to clipboard.</span>}
-              <DupResultsTable results={duplicates} />
+              <DupResultsTable results={duplicates} batchMode={dedupMode === 'batches'} />
             </>
           )}
 
-          {selectedCampaigns.length >= 2 && duplicates.length === 0 && (
-            <p className="muted">No duplicates found for the selected campaigns and minimum count.</p>
-          )}
+          {dedupSources.length >= 2 &&
+            duplicates.length === 0 &&
+            !(dedupMode === 'batches' && dedupBatchCount < 2) && (
+              <p className="muted">No duplicates found for the selected sources and minimum count.</p>
+            )}
         </>
       )}
+
+      <hr className="section-divider" />
+      <h3>Single-sheet cross-campaign drain finder</h3>
+      <p className="panel-desc">
+        Upload one Sponsored Products/Brands bulk report that already contains many campaigns in a single sheet. This
+        feature finds keywords that repeat across multiple campaign names, have high combined clicks, and have no sales.
+        It is separate from the cross-campaign dedup flow above.
+      </p>
+      <div className="dedup-single-sheet">
+        <div className="dedup-single-sheet__controls">
+          <label htmlFor="dedup-single-sheet-input">Upload single report</label>
+          <input
+            id="dedup-single-sheet-input"
+            type="file"
+            accept=".csv,.txt"
+            onChange={handleSingleSheetChange}
+          />
+          <label>
+            Min campaigns
+            <input
+              type="number"
+              min={2}
+              max={20}
+              value={singleSheetMinCampaigns}
+              onChange={(e) => setSingleSheetMinCampaigns(Math.max(2, parseInt(e.target.value, 10) || 2))}
+            />
+          </label>
+          <label>
+            Min combined clicks
+            <input
+              type="number"
+              min={0}
+              max={1000000000}
+              value={singleSheetMinClicks}
+              onChange={(e) => setSingleSheetMinClicks(Math.max(0, parseInt(e.target.value, 10) || 0))}
+            />
+          </label>
+        </div>
+        {singleSheetLoading && <p className="muted">Loading and analyzing file…</p>}
+        {singleSheetFileName && !singleSheetLoading && (
+          <p className="muted">
+            <strong>{singleSheetFileName}</strong> · {singleSheetResults.length} keyword
+            {singleSheetResults.length === 1 ? '' : 's'} matched
+          </p>
+        )}
+        {singleSheetError && <p className="warning">{singleSheetError}</p>}
+        {!singleSheetLoading && singleSheetFileName && singleSheetResults.length === 0 && !singleSheetError && (
+          <p className="muted">
+            No matching duplicates found. Confirm your file has search term, campaign name, clicks, and sales/order
+            columns.
+          </p>
+        )}
+        {singleSheetResults.length > 0 && <SingleSheetDrainTable results={singleSheetResults} />}
+      </div>
     </section>
   )
 }
 
-type DupSortKey = 'term' | 'campaigns' | 'count' | 'clicksPerCsv' | 'totalClicks'
+/** Purchase / order counts (summed per keyword). */
+function formatPurchaseCount(n: number): string {
+  const x = Number.isFinite(n) ? n : 0
+  if (Math.abs(x - Math.round(x)) < 1e-9) return Math.round(x).toLocaleString()
+  return x.toLocaleString(undefined, { maximumFractionDigits: 4 })
+}
+
+function formatAcosPct(n: number): string {
+  return `${n.toLocaleString(undefined, { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`
+}
+
+type DupSortKey = 'term' | 'campaigns' | 'count' | 'totalClicks' | 'totalPurchases'
 type DupSortDir = 'asc' | 'desc'
 
 /** First click: text columns A→Z, numeric columns high→low (typical analytics). Toggle flips. */
@@ -139,8 +342,34 @@ const DEFAULT_DIR: Record<DupSortKey, DupSortDir> = {
   term: 'asc',
   campaigns: 'asc',
   count: 'desc',
-  clicksPerCsv: 'desc',
   totalClicks: 'desc',
+  totalPurchases: 'desc',
+}
+
+function parseOptionalNonNegNumber(s: string): number | undefined {
+  const t = s.trim().replace(/,/g, '')
+  if (!t) return undefined
+  const n = parseFloat(t)
+  if (!Number.isFinite(n) || n < 0) return undefined
+  return n
+}
+
+function passesMetricThresholds(
+  r: DuplicateResult,
+  minClicks?: number,
+  minPurch?: number,
+  minAcosPct?: number,
+  maxAcosPct?: number
+): boolean {
+  if (minClicks !== undefined && r.totalClicks < minClicks) return false
+  if (minPurch !== undefined && r.totalPurchases < minPurch) return false
+  if (minAcosPct !== undefined || maxAcosPct !== undefined) {
+    const acos = r.totalAcosPct
+    if (acos == null) return false
+    if (minAcosPct !== undefined && acos < minAcosPct) return false
+    if (maxAcosPct !== undefined && acos > maxAcosPct) return false
+  }
+  return true
 }
 
 function compareDupRows(a: DuplicateResult, b: DuplicateResult, key: DupSortKey): number {
@@ -158,20 +387,9 @@ function compareDupRows(a: DuplicateResult, b: DuplicateResult, key: DupSortKey)
     case 'totalClicks':
       cmp = a.totalClicks - b.totalClicks
       break
-    case 'clicksPerCsv': {
-      cmp = a.totalClicks - b.totalClicks
-      if (cmp !== 0) break
-      const ac = a.campaigns.map((c) => a.clicksByCampaign.get(c) ?? 0)
-      const bc = b.campaigns.map((c) => b.clicksByCampaign.get(c) ?? 0)
-      for (let i = 0; i < Math.max(ac.length, bc.length); i++) {
-        const d = (ac[i] ?? 0) - (bc[i] ?? 0)
-        if (d !== 0) {
-          cmp = d
-          break
-        }
-      }
+    case 'totalPurchases':
+      cmp = a.totalPurchases - b.totalPurchases
       break
-    }
     default:
       cmp = 0
   }
@@ -179,11 +397,48 @@ function compareDupRows(a: DuplicateResult, b: DuplicateResult, key: DupSortKey)
   return cmp
 }
 
-function DupResultsTable({ results }: { results: DuplicateResult[] }) {
+function DupResultsTable({ results, batchMode = false }: { results: DuplicateResult[]; batchMode?: boolean }) {
+  const [filterQuery, setFilterQuery] = useState('')
+  const [minClicksInput, setMinClicksInput] = useState('')
+  const [minPurchInput, setMinPurchInput] = useState('')
+  const [minAcosInput, setMinAcosInput] = useState('')
+  const [maxAcosInput, setMaxAcosInput] = useState('')
   const [sort, setSort] = useState<{ key: DupSortKey; dir: DupSortDir }>({
     key: 'count',
     dir: 'desc',
   })
+
+  const metricParsed = useMemo(
+    () => ({
+      minClicks: parseOptionalNonNegNumber(minClicksInput),
+      minPurch: parseOptionalNonNegNumber(minPurchInput),
+      minAcos: parseOptionalNonNegNumber(minAcosInput),
+      maxAcos: parseOptionalNonNegNumber(maxAcosInput),
+    }),
+    [minClicksInput, minPurchInput, minAcosInput, maxAcosInput]
+  )
+
+  const afterMetricFilters = useMemo(() => {
+    const { minClicks, minPurch, minAcos, maxAcos } = metricParsed
+    if (
+      minClicks === undefined &&
+      minPurch === undefined &&
+      minAcos === undefined &&
+      maxAcos === undefined
+    ) {
+      return results
+    }
+    return results.filter((r) => passesMetricThresholds(r, minClicks, minPurch, minAcos, maxAcos))
+  }, [results, metricParsed])
+
+  const filteredResults = useMemo(() => {
+    const q = filterQuery.trim().toLowerCase()
+    if (!q) return afterMetricFilters
+    return afterMetricFilters.filter((r) => {
+      if (r.normalizedTerm.toLowerCase().includes(q)) return true
+      return r.campaigns.some((c) => c.toLowerCase().includes(q))
+    })
+  }, [afterMetricFilters, filterQuery])
 
   const handleSort = useCallback((key: DupSortKey) => {
     setSort((prev) =>
@@ -194,11 +449,11 @@ function DupResultsTable({ results }: { results: DuplicateResult[] }) {
   }, [])
 
   const sorted = useMemo(() => {
-    const arr = [...results]
+    const arr = [...filteredResults]
     const mul = sort.dir === 'asc' ? 1 : -1
     arr.sort((a, b) => mul * compareDupRows(a, b, sort.key))
     return arr
-  }, [results, sort.key, sort.dir])
+  }, [filteredResults, sort.key, sort.dir])
 
   const SortTh = ({
     colKey,
@@ -236,46 +491,209 @@ function DupResultsTable({ results }: { results: DuplicateResult[] }) {
     )
   }
 
+  const textFilterActive = filterQuery.trim().length > 0
+  const metricFilterActive =
+    minClicksInput.trim() !== '' ||
+    minPurchInput.trim() !== '' ||
+    minAcosInput.trim() !== '' ||
+    maxAcosInput.trim() !== ''
+  const filterActive = textFilterActive || metricFilterActive
+
   return (
-    <div className="table-wrap">
+    <>
+      <div className="dedup-metric-filters" aria-label="Filter by combined totals">
+        <div className="dedup-metric-filters__intro">
+          Combined totals (applies to each keyword row — same logic in As is and batch mode)
+        </div>
+        <div className="dedup-metric-filters__grid">
+          <label className="dedup-metric-filters__field">
+            <span className="dedup-metric-filters__field-label">Min clicks</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              className="dedup-metric-filters__input"
+              placeholder="—"
+              value={minClicksInput}
+              onChange={(e) => setMinClicksInput(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          <label className="dedup-metric-filters__field">
+            <span className="dedup-metric-filters__field-label">Min orders</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              className="dedup-metric-filters__input"
+              placeholder="—"
+              value={minPurchInput}
+              onChange={(e) => setMinPurchInput(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          <label className="dedup-metric-filters__field">
+            <span className="dedup-metric-filters__field-label">Min ACOS %</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="dedup-metric-filters__input"
+              placeholder="—"
+              value={minAcosInput}
+              onChange={(e) => setMinAcosInput(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          <label className="dedup-metric-filters__field">
+            <span className="dedup-metric-filters__field-label">Max ACOS %</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="dedup-metric-filters__input"
+              placeholder="—"
+              value={maxAcosInput}
+              onChange={(e) => setMaxAcosInput(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+        </div>
+        <p className="dedup-metric-filters__hint">
+          Uses the combined row totals (all sources / all batches). ACOS filters apply only when blended ACOS exists. Leave fields blank to skip.
+        </p>
+      </div>
+      <div className="dedup-table-filter" role="search">
+        <label htmlFor="dedup-table-filter-input" className="dedup-table-filter__label">
+          Filter table
+        </label>
+        <input
+          id="dedup-table-filter-input"
+          type="search"
+          className="dedup-table-filter__input"
+          placeholder={batchMode ? 'Search by term or batch name…' : 'Search by term or source name…'}
+          value={filterQuery}
+          onChange={(e) => setFilterQuery(e.target.value)}
+          autoComplete="off"
+        />
+        {filterActive && (
+          <span className="dedup-table-filter__meta" aria-live="polite">
+            {filteredResults.length} of {results.length} terms
+          </span>
+        )}
+      </div>
+      <div className="table-wrap table-wrap--sticky-header">
       <table className="results-table results-table--dedup-sort">
         <caption className="sr-only">
-          Duplicate search terms across campaigns. Click a column heading to sort. Click again to reverse order.
+          Duplicate search terms across {batchMode ? 'batches' : 'campaigns'}. Click a column heading to sort. Click again to reverse order.
         </caption>
         <thead>
           <tr>
             <SortTh colKey="term">Normalized term</SortTh>
-            <SortTh colKey="campaigns">Campaigns</SortTh>
             <SortTh colKey="count" align="right">
               Count
             </SortTh>
-            <SortTh colKey="clicksPerCsv">Clicks per CSV</SortTh>
+            <SortTh colKey="campaigns">{batchMode ? 'Batch' : 'Source (file / campaign)'}</SortTh>
             <SortTh colKey="totalClicks" align="right">
-              Total clicks
+              Clicks
             </SortTh>
+            <SortTh colKey="totalPurchases" align="right">
+              Purch.
+            </SortTh>
+            <th scope="col" className="dedup-th-static">
+              ACOS
+            </th>
           </tr>
         </thead>
-        <tbody>
-          {sorted.map((r) => (
-            <tr key={r.normalizedTerm}>
-              <td>
-                <code>{r.normalizedTerm}</code>
-              </td>
-              <td>{r.campaigns.join(', ')}</td>
-              <td className="dedup-td-num">{r.campaignCount}</td>
-              <td>
-                <ul className="example-list dedup-clicks-per-csv">
-                  {r.campaigns.map((camp) => (
-                    <li key={camp}>
-                      <strong>{camp}:</strong> {(r.clicksByCampaign.get(camp) ?? 0).toLocaleString()}
-                    </li>
-                  ))}
-                </ul>
-              </td>
-              <td className="dedup-td-num">{r.totalClicks.toLocaleString()}</td>
-            </tr>
-          ))}
-        </tbody>
+        {sorted.map((r) => {
+          const n = r.campaigns.length
+          const span = n + 1
+          return (
+            <tbody key={r.normalizedTerm} className="dedup-tbody-group">
+              {r.campaigns.map((camp, i) => {
+                const purch = r.purchasesByCampaign.get(camp) ?? 0
+                const acos = r.acosPctByCampaign.get(camp)
+                return (
+                  <tr key={camp}>
+                    {i === 0 && (
+                      <>
+                        <td rowSpan={span} className="dedup-td-term">
+                          <code>{r.normalizedTerm}</code>
+                        </td>
+                        <td rowSpan={span} className="dedup-td-num dedup-td-count">
+                          {r.campaignCount}
+                        </td>
+                      </>
+                    )}
+                    <td className="dedup-td-source">{camp}</td>
+                    <td className="dedup-td-num dedup-td-metric">{(r.clicksByCampaign.get(camp) ?? 0).toLocaleString()}</td>
+                    <td className="dedup-td-num dedup-td-metric">
+                      {purch > 0 ? formatPurchaseCount(purch) : '—'}
+                    </td>
+                    <td className="dedup-td-num dedup-td-metric dedup-td-acos">
+                      {purch > 0 ? (acos != null ? formatAcosPct(acos) : '—') : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+              <tr className="dedup-row-combined">
+                <td className="dedup-td-source dedup-td-combined-label">
+                  {batchMode ? 'All batches combined' : 'All sources combined'}
+                </td>
+                <td className="dedup-td-num dedup-td-metric dedup-td-combined">{r.totalClicks.toLocaleString()}</td>
+                <td className="dedup-td-num dedup-td-metric dedup-td-combined">
+                  {r.totalPurchases > 0 ? formatPurchaseCount(r.totalPurchases) : '—'}
+                </td>
+                <td className="dedup-td-num dedup-td-metric dedup-td-combined dedup-td-acos">
+                  {r.totalAcosPct != null ? formatAcosPct(r.totalAcosPct) : '—'}
+                </td>
+              </tr>
+            </tbody>
+          )
+        })}
+      </table>
+    </div>
+    </>
+  )
+}
+
+function SingleSheetDrainTable({ results }: { results: DuplicateResult[] }) {
+  return (
+    <div className="table-wrap table-wrap--sticky-header">
+      <table className="results-table results-table--dedup-sort">
+        <thead>
+          <tr>
+            <th scope="col">Keyword</th>
+            <th scope="col" className="dedup-th-static">Campaign count</th>
+            <th scope="col">Campaign name</th>
+            <th scope="col" className="dedup-th-static">Clicks in campaign</th>
+            <th scope="col" className="dedup-th-static">Combined clicks</th>
+          </tr>
+        </thead>
+        {results.map((r) => {
+          const n = r.campaigns.length
+          return (
+            <tbody key={r.normalizedTerm} className="dedup-tbody-group">
+              {r.campaigns.map((camp, i) => (
+                <tr key={`${r.normalizedTerm}-${camp}`}>
+                  {i === 0 && (
+                    <>
+                      <td rowSpan={n} className="dedup-td-term">
+                        <code>{r.normalizedTerm}</code>
+                      </td>
+                      <td rowSpan={n} className="dedup-td-num dedup-td-count">{r.campaignCount}</td>
+                    </>
+                  )}
+                  <td className="dedup-td-source">{camp}</td>
+                  <td className="dedup-td-num dedup-td-metric">
+                    {(r.clicksByCampaign.get(camp) ?? 0).toLocaleString()}
+                  </td>
+                  {i === 0 && (
+                    <td rowSpan={n} className="dedup-td-num dedup-td-combined">
+                      {r.totalClicks.toLocaleString()}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          )
+        })}
       </table>
     </div>
   )
