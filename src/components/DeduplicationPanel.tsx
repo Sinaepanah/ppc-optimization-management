@@ -34,7 +34,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
   const [singleSheetMinCampaigns, setSingleSheetMinCampaigns] = useState(2)
   const [singleSheetMinClicks, setSingleSheetMinClicks] = useState(20)
   const [singleSheetMinImpressions, setSingleSheetMinImpressions] = useState('0')
-  const [singleSheetMinSales, setSingleSheetMinSales] = useState('0')
+  const [singleSheetMinOrders, setSingleSheetMinOrders] = useState('0')
   const [singleSheetClicksMode, setSingleSheetClicksMode] = useState<ComparatorMode>('min')
   const [singleSheetImprMode, setSingleSheetImprMode] = useState<ComparatorMode>('min')
   const [singleSheetSalesMode, setSingleSheetSalesMode] = useState<ComparatorMode>('min')
@@ -146,19 +146,19 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     }
     const clicksThreshold = Math.max(0, singleSheetMinClicks)
     const minImpr = Math.max(0, parseFloat(singleSheetMinImpressions) || 0)
-    const minSales = Math.max(0, parseFloat(singleSheetMinSales) || 0)
+    const minOrders = Math.max(0, parseFloat(singleSheetMinOrders) || 0)
     return base.filter(
       (r) =>
         cmp(r.totalClicks, clicksThreshold, singleSheetClicksMode) &&
         cmp(r.totalImpressions, minImpr, singleSheetImprMode) &&
-        cmp(r.totalSales, minSales, singleSheetSalesMode)
+        cmp(r.totalPurchases, minOrders, singleSheetSalesMode)
     )
   }, [
     singleSheetText,
     singleSheetMinCampaigns,
     singleSheetMinClicks,
     singleSheetMinImpressions,
-    singleSheetMinSales,
+    singleSheetMinOrders,
     singleSheetClicksMode,
     singleSheetImprMode,
     singleSheetSalesMode,
@@ -367,7 +367,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
             </div>
           </div>
           <div className="dedup-single-sheet__field">
-            <span className="dedup-single-sheet__label">Sales</span>
+            <span className="dedup-single-sheet__label">Orders</span>
             <div className="dedup-single-sheet__pair">
               <select
                 value={singleSheetSalesMode}
@@ -382,8 +382,8 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                 type="number"
                 min={0}
                 step="any"
-                value={singleSheetMinSales}
-                onChange={(e) => setSingleSheetMinSales(e.target.value)}
+                value={singleSheetMinOrders}
+                onChange={(e) => setSingleSheetMinOrders(e.target.value)}
                 className="dedup-single-sheet__input"
               />
             </div>
