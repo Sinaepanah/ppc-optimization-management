@@ -9,6 +9,7 @@ import {
 } from '../utils/deduplication'
 import { LARGE_DATA_WARNING } from '../types'
 import { ExportControls, type ExportFormat } from './ExportControls'
+import { isSupportedTabularFile, readEncodedTextFile, TABULAR_UPLOAD_ACCEPT } from '../utils/readEncodedTextFile'
 
 interface DeduplicationPanelProps {
   campaigns: Campaign[]
@@ -105,20 +106,15 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
   const handleSingleSheetChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (!(file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.txt'))) {
-      setSingleSheetError('Please select a CSV file')
+    if (!isSupportedTabularFile(file)) {
+      setSingleSheetError('Please select a CSV or Excel file')
       e.target.value = ''
       return
     }
     setSingleSheetLoading(true)
     setSingleSheetError(null)
     try {
-      const text = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(String(reader.result ?? ''))
-        reader.onerror = () => reject(reader.error ?? new Error('read failed'))
-        reader.readAsText(file, 'UTF-8')
-      })
+      const text = await readEncodedTextFile(file)
       setSingleSheetText(text)
       setSingleSheetFileName(file.name)
     } catch {
@@ -279,7 +275,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
           <input
             id="dedup-single-sheet-input"
             type="file"
-            accept=".csv,.txt"
+            accept={TABULAR_UPLOAD_ACCEPT}
             onChange={handleSingleSheetChange}
           />
           <label>
