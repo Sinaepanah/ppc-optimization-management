@@ -18,6 +18,7 @@ interface DeduplicationPanelProps {
 
 const CUSTOM_MANUAL_KEYWORDS_ID = '__custom_manual_keywords__'
 const CUSTOM_MANUAL_KEYWORDS_LABEL = 'CUSTOM MANUAL KEYWORDS'
+type ComparatorMode = 'min' | 'max' | 'eq'
 
 export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
   const [dedupMode, setDedupMode] = useState<'campaigns' | 'batches'>('campaigns')
@@ -34,6 +35,9 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
   const [singleSheetMinClicks, setSingleSheetMinClicks] = useState(20)
   const [singleSheetMinImpressions, setSingleSheetMinImpressions] = useState('0')
   const [singleSheetMinSales, setSingleSheetMinSales] = useState('0')
+  const [singleSheetClicksMode, setSingleSheetClicksMode] = useState<ComparatorMode>('min')
+  const [singleSheetImprMode, setSingleSheetImprMode] = useState<ComparatorMode>('min')
+  const [singleSheetSalesMode, setSingleSheetSalesMode] = useState<ComparatorMode>('min')
 
   const toggleCampaign = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -133,12 +137,32 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     const base = findSingleSheetDuplicatesByCampaign(
       singleSheetText,
       Math.max(2, singleSheetMinCampaigns),
-      Math.max(0, singleSheetMinClicks)
+      0
     )
+    const cmp = (value: number, threshold: number, mode: ComparatorMode): boolean => {
+      if (mode === 'eq') return value === threshold
+      if (mode === 'max') return value <= threshold
+      return value >= threshold
+    }
+    const clicksThreshold = Math.max(0, singleSheetMinClicks)
     const minImpr = Math.max(0, parseFloat(singleSheetMinImpressions) || 0)
     const minSales = Math.max(0, parseFloat(singleSheetMinSales) || 0)
-    return base.filter((r) => r.totalImpressions >= minImpr && r.totalSales >= minSales)
-  }, [singleSheetText, singleSheetMinCampaigns, singleSheetMinClicks, singleSheetMinImpressions, singleSheetMinSales])
+    return base.filter(
+      (r) =>
+        cmp(r.totalClicks, clicksThreshold, singleSheetClicksMode) &&
+        cmp(r.totalImpressions, minImpr, singleSheetImprMode) &&
+        cmp(r.totalSales, minSales, singleSheetSalesMode)
+    )
+  }, [
+    singleSheetText,
+    singleSheetMinCampaigns,
+    singleSheetMinClicks,
+    singleSheetMinImpressions,
+    singleSheetMinSales,
+    singleSheetClicksMode,
+    singleSheetImprMode,
+    singleSheetSalesMode,
+  ])
 
   return (
     <section className="panel deduplication-panel">
@@ -298,39 +322,72 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
               className="dedup-single-sheet__input"
             />
           </label>
-          <label className="dedup-single-sheet__field">
-            <span className="dedup-single-sheet__label">Min combined clicks</span>
-            <input
-              type="number"
-              min={0}
-              max={1000000000}
-              value={singleSheetMinClicks}
-              onChange={(e) => setSingleSheetMinClicks(Math.max(0, parseInt(e.target.value, 10) || 0))}
-              className="dedup-single-sheet__input"
-            />
-          </label>
-          <label className="dedup-single-sheet__field">
-            <span className="dedup-single-sheet__label">Min impressions</span>
-            <input
-              type="number"
-              min={0}
-              step="any"
-              value={singleSheetMinImpressions}
-              onChange={(e) => setSingleSheetMinImpressions(e.target.value)}
-              className="dedup-single-sheet__input"
-            />
-          </label>
-          <label className="dedup-single-sheet__field">
-            <span className="dedup-single-sheet__label">Min sales</span>
-            <input
-              type="number"
-              min={0}
-              step="any"
-              value={singleSheetMinSales}
-              onChange={(e) => setSingleSheetMinSales(e.target.value)}
-              className="dedup-single-sheet__input"
-            />
-          </label>
+          <div className="dedup-single-sheet__field">
+            <span className="dedup-single-sheet__label">Combined clicks</span>
+            <div className="dedup-single-sheet__pair">
+              <select
+                value={singleSheetClicksMode}
+                onChange={(e) => setSingleSheetClicksMode(e.target.value as ComparatorMode)}
+                className="dedup-single-sheet__input"
+              >
+                <option value="eq">Equal to</option>
+                <option value="min">Min</option>
+                <option value="max">Max</option>
+              </select>
+              <input
+                type="number"
+                min={0}
+                max={1000000000}
+                value={singleSheetMinClicks}
+                onChange={(e) => setSingleSheetMinClicks(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                className="dedup-single-sheet__input"
+              />
+            </div>
+          </div>
+          <div className="dedup-single-sheet__field">
+            <span className="dedup-single-sheet__label">Impressions</span>
+            <div className="dedup-single-sheet__pair">
+              <select
+                value={singleSheetImprMode}
+                onChange={(e) => setSingleSheetImprMode(e.target.value as ComparatorMode)}
+                className="dedup-single-sheet__input"
+              >
+                <option value="eq">Equal to</option>
+                <option value="min">Min</option>
+                <option value="max">Max</option>
+              </select>
+              <input
+                type="number"
+                min={0}
+                step="any"
+                value={singleSheetMinImpressions}
+                onChange={(e) => setSingleSheetMinImpressions(e.target.value)}
+                className="dedup-single-sheet__input"
+              />
+            </div>
+          </div>
+          <div className="dedup-single-sheet__field">
+            <span className="dedup-single-sheet__label">Sales</span>
+            <div className="dedup-single-sheet__pair">
+              <select
+                value={singleSheetSalesMode}
+                onChange={(e) => setSingleSheetSalesMode(e.target.value as ComparatorMode)}
+                className="dedup-single-sheet__input"
+              >
+                <option value="eq">Equal to</option>
+                <option value="min">Min</option>
+                <option value="max">Max</option>
+              </select>
+              <input
+                type="number"
+                min={0}
+                step="any"
+                value={singleSheetMinSales}
+                onChange={(e) => setSingleSheetMinSales(e.target.value)}
+                className="dedup-single-sheet__input"
+              />
+            </div>
+          </div>
         </div>
         {singleSheetLoading && <p className="muted">Loading and analyzing file…</p>}
         {singleSheetFileName && !singleSheetLoading && (
