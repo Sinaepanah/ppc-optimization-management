@@ -80,15 +80,14 @@ function compareMetricWinner(
 }
 
 function compareCellClass(
-  focus: { normalizedTerm: string; field: CompareField } | null,
-  term: string,
+  activeFields: ReadonlySet<CompareField>,
   field: CompareField,
   side: 'source' | 'ref',
   row: ScoredTerm,
   exact: ReferenceExactMetrics | null,
   hasClicks: boolean
 ): string {
-  if (!focus || focus.normalizedTerm !== term || focus.field !== field) return ''
+  if (!activeFields.has(field)) return ''
   if (field === 'cvr' && !hasClicks) {
     return side === 'ref' && exact ? 'auto-exact-cell--compare-highlight' : ''
   }
@@ -108,21 +107,6 @@ function compareCellClass(
     return 'auto-exact-cell--compare-highlight auto-exact-cell--compare-winner'
   }
   return 'auto-exact-cell--compare-highlight auto-exact-cell--compare-dim'
-}
-
-/** Keyboard + focus target for clickable metric cells (no calculation changes). */
-function metricInteractProps(onActivate: () => void) {
-  return {
-    onClick: onActivate,
-    onKeyDown: (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault()
-        onActivate()
-      }
-    },
-    tabIndex: 0 as const,
-    role: 'button' as const,
-  }
 }
 
 type PromoteSortKey =
@@ -168,25 +152,16 @@ export function ResultsTables({
   const headerCheckRef = useRef<HTMLInputElement>(null)
   const [sortKey, setSortKey] = useState<PromoteSortKey>('originalTerm')
   const [sortAsc, setSortAsc] = useState(true)
-  const [compareFocus, setCompareFocus] = useState<{ normalizedTerm: string; field: CompareField } | null>(null)
+  const [compareFields, setCompareFields] = useState<Set<CompareField>>(() => new Set())
 
-  const toggleCompare = useCallback(
-    (
-      normalizedTerm: string,
-      field: CompareField,
-      exact: ReferenceExactMetrics | null,
-      clickedSide: 'source' | 'ref',
-      hasClicksCol: boolean
-    ) => {
-      if (clickedSide === 'ref' && !exact) return
-      if (field === 'cvr' && clickedSide === 'source' && !hasClicksCol) return
-      setCompareFocus((prev) => {
-        if (prev?.normalizedTerm === normalizedTerm && prev.field === field) return null
-        return { normalizedTerm, field }
-      })
-    },
-    []
-  )
+  const toggleCompareField = useCallback((field: CompareField) => {
+    setCompareFields((prev) => {
+      const next = new Set(prev)
+      if (next.has(field)) next.delete(field)
+      else next.add(field)
+      return next
+    })
+  }, [])
 
   useEffect(() => {
     const el = headerCheckRef.current
@@ -313,11 +288,16 @@ export function ResultsTables({
     children,
     rowSpan = 1,
     className,
+    compareField,
+    compareAriaLabel,
   }: {
     colKey: PromoteSortKey
     children: React.ReactNode
     rowSpan?: number
     className?: string
+    /** When set, a checkbox toggles winner highlighting for this metric on every row (source vs reference). */
+    compareField?: CompareField
+    compareAriaLabel?: string
   }) => {
     const ariaSort = sortKey === colKey ? (sortAsc ? 'ascending' : 'descending') : 'none'
     return (
@@ -326,10 +306,24 @@ export function ResultsTables({
         className={['auto-exact-th-sortable', className].filter(Boolean).join(' ')}
         scope="col"
         aria-sort={ariaSort}
-        onClick={() => handleSortClick(colKey)}
+        onClick={(e) => {
+          const t = e.target as HTMLElement
+          if (t instanceof HTMLInputElement && t.type === 'checkbox') return
+          handleSortClick(colKey)
+        }}
       >
         <span className="auto-exact-th-inner">
-          {children}
+          {compareField != null && (
+            <input
+              type="checkbox"
+              className="auto-exact-th-compare-cb"
+              checked={compareFields.has(compareField)}
+              onChange={() => toggleCompareField(compareField)}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={compareAriaLabel ?? `Compare ${compareField} vs reference on all rows`}
+            />
+          )}
+          <span className="auto-exact-th-sort-label">{children}</span>
           {sortKey === colKey && (sortAsc ? <ChevronUp className="auto-exact-sort-icon" aria-hidden /> : <ChevronDown className="auto-exact-sort-icon" aria-hidden />)}
         </span>
       </th>
@@ -351,7 +345,7 @@ export function ResultsTables({
           >
             <table className="results-table results-table--compact results-table--promote">
               <caption className="sr-only">
-                Promote to Exact: source metrics from your search-term data, reference metrics from the Exact campaign CSV, current CPC and target-Acos-based suggested CPC on the source side, reference current CPC, and a performance summary. Use column headers to sort. Activate a number cell to compare source and reference for that metric.
+                Promote to Exact: source metrics from your search-term data, reference metrics from the Exact campaign CSV, current CPC and target-Acos-based suggested CPC on the source side, reference current CPC, and a performance summary. Use column headers to sort. Use the checkbox in a metric column header to highlight the better value versus reference on every row for that metric; several metrics can be selected at once.
               </caption>
               <thead>
                 <tr>
@@ -368,35 +362,75 @@ export function ResultsTables({
                     Term
                   </SortableTh>
                   <th rowSpan={2} scope="col">Campaign(s)</th>
-                  <SortableTh colKey="ordersSum" rowSpan={2}>
+                  <SortableTh
+                    colKey="ordersSum"
+                    rowSpan={2}
+                    compareField="orders"
+                    compareAriaLabel="Highlight better orders vs reference for all rows"
+                  >
                     Orders
                   </SortableTh>
-                  <SortableTh colKey="salesSum" rowSpan={2}>
+                  <SortableTh
+                    colKey="salesSum"
+                    rowSpan={2}
+                    compareField="sales"
+                    compareAriaLabel="Highlight source sales column for all rows"
+                  >
                     Sales
                   </SortableTh>
-                  <SortableTh colKey="spendSum" rowSpan={2}>
+                  <SortableTh
+                    colKey="spendSum"
+                    rowSpan={2}
+                    compareField="spend"
+                    compareAriaLabel="Highlight source spend column for all rows"
+                  >
                     Spend
                   </SortableTh>
-                  <SortableTh colKey="acosPct" rowSpan={2}>
+                  <SortableTh
+                    colKey="acosPct"
+                    rowSpan={2}
+                    compareField="acos"
+                    compareAriaLabel="Highlight better ACoS vs reference for all rows"
+                  >
                     ACoS
                   </SortableTh>
-                  <SortableTh colKey="sourceRoas" rowSpan={2}>
+                  <SortableTh
+                    colKey="sourceRoas"
+                    rowSpan={2}
+                    compareField="roas"
+                    compareAriaLabel="Highlight better ROAS vs reference for all rows"
+                  >
                     ROAS
                   </SortableTh>
                   {hasClicks && (
-                    <SortableTh colKey="clicksSum" rowSpan={2}>
+                    <SortableTh
+                      colKey="clicksSum"
+                      rowSpan={2}
+                      compareField="clicks"
+                      compareAriaLabel="Highlight better clicks vs reference for all rows"
+                    >
                       Clicks
                     </SortableTh>
                   )}
                   {hasClicks && (
-                    <SortableTh colKey="cvrPct" rowSpan={2}>
+                    <SortableTh
+                      colKey="cvrPct"
+                      rowSpan={2}
+                      compareField="cvr"
+                      compareAriaLabel="Highlight better CVR vs reference for all rows"
+                    >
                       CVR
                     </SortableTh>
                   )}
                   <SortableTh colKey="sourceCurrCpc" rowSpan={2}>
                     Curr. CPC
                   </SortableTh>
-                  <SortableTh colKey="suggestedCpc" rowSpan={2}>
+                  <SortableTh
+                    colKey="suggestedCpc"
+                    rowSpan={2}
+                    compareField="cpc"
+                    compareAriaLabel="Highlight suggested CPC column for all rows"
+                  >
                     CPC ({targetAcosForCpc}%)
                   </SortableTh>
                   <th colSpan={hasClicks ? 6 : 5} className="auto-exact-th-group-ref" scope="colgroup">
@@ -435,7 +469,7 @@ export function ResultsTables({
                   const exact = lookupRef(row.normalizedTerm)
                   const term = row.normalizedTerm
                   const cc = (field: CompareField, side: 'source' | 'ref', extra?: string) =>
-                    ['auto-exact-cell--metric', extra, compareCellClass(compareFocus, term, field, side, row, exact, hasClicks)]
+                    ['auto-exact-cell--metric', extra, compareCellClass(compareFields, field, side, row, exact, hasClicks)]
                       .filter(Boolean)
                       .join(' ')
                   return (
@@ -455,49 +489,14 @@ export function ResultsTables({
                       <td title={row.campaignNames.join(', ')}>
                         {row.campaignNames.length > 0 ? row.campaignNames.join(', ') : '—'}
                       </td>
-                      <td
-                        className={cc('orders', 'source')}
-                        {...metricInteractProps(() => toggleCompare(term, 'orders', exact, 'source', hasClicks))}
-                      >
-                        {row.ordersSum}
-                      </td>
-                      <td
-                        className={cc('sales', 'source')}
-                        {...metricInteractProps(() => toggleCompare(term, 'sales', exact, 'source', hasClicks))}
-                      >
-                        {row.salesSum.toFixed(2)}
-                      </td>
-                      <td
-                        className={cc('spend', 'source')}
-                        {...metricInteractProps(() => toggleCompare(term, 'spend', exact, 'source', hasClicks))}
-                      >
-                        {row.spendSum.toFixed(2)}
-                      </td>
-                      <td
-                        className={cc('acos', 'source')}
-                        {...metricInteractProps(() => toggleCompare(term, 'acos', exact, 'source', hasClicks))}
-                      >
-                        {row.acosPct.toFixed(1)}%
-                      </td>
-                      <td
-                        className={cc('roas', 'source')}
-                        {...metricInteractProps(() => toggleCompare(term, 'roas', exact, 'source', hasClicks))}
-                      >
-                        {formatRoas(row.roas)}
-                      </td>
+                      <td className={cc('orders', 'source')}>{row.ordersSum}</td>
+                      <td className={cc('sales', 'source')}>{row.salesSum.toFixed(2)}</td>
+                      <td className={cc('spend', 'source')}>{row.spendSum.toFixed(2)}</td>
+                      <td className={cc('acos', 'source')}>{row.acosPct.toFixed(1)}%</td>
+                      <td className={cc('roas', 'source')}>{formatRoas(row.roas)}</td>
+                      {hasClicks && <td className={cc('clicks', 'source')}>{row.clicksSum}</td>}
                       {hasClicks && (
-                        <td
-                          className={cc('clicks', 'source')}
-                          {...metricInteractProps(() => toggleCompare(term, 'clicks', exact, 'source', hasClicks))}
-                        >
-                          {row.clicksSum}
-                        </td>
-                      )}
-                      {hasClicks && (
-                        <td
-                          className={cc('cvr', 'source')}
-                          {...metricInteractProps(() => toggleCompare(term, 'cvr', exact, 'source', hasClicks))}
-                        >
+                        <td className={cc('cvr', 'source')}>
                           {row.cvrPct != null ? `${row.cvrPct.toFixed(1)}%` : '—'}
                         </td>
                       )}
@@ -507,10 +506,7 @@ export function ResultsTables({
                           return v != null ? `$${v.toFixed(2)}` : '—'
                         })()}
                       </td>
-                      <td
-                        className={cc('cpc', 'source')}
-                        {...metricInteractProps(() => toggleCompare(term, 'cpc', exact, 'source', hasClicks))}
-                      >
+                      <td className={cc('cpc', 'source')}>
                         {(() => {
                           const c = suggestedCpcFromTargetAcos(
                             row.salesSum,
@@ -527,19 +523,16 @@ export function ResultsTables({
                           'ref',
                           `auto-exact-td-ref auto-exact-td-ref--edge${!exact ? ' auto-exact-cell--metric--disabled' : ''}`
                         )}
-                        {...(exact ? metricInteractProps(() => toggleCompare(term, 'clicks', exact, 'ref', hasClicks)) : {})}
                       >
                         {exact != null ? exact.clicks : '—'}
                       </td>
                       <td
                         className={cc('orders', 'ref', `auto-exact-td-ref${!exact ? ' auto-exact-cell--metric--disabled' : ''}`)}
-                        {...(exact ? metricInteractProps(() => toggleCompare(term, 'orders', exact, 'ref', hasClicks)) : {})}
                       >
                         {exact != null ? exact.orders : '—'}
                       </td>
                       <td
                         className={cc('acos', 'ref', `auto-exact-td-ref${!exact ? ' auto-exact-cell--metric--disabled' : ''}`)}
-                        {...(exact ? metricInteractProps(() => toggleCompare(term, 'acos', exact, 'ref', hasClicks)) : {})}
                       >
                         {exact != null ? `${exact.acosPct.toFixed(1)}%` : '—'}
                       </td>
@@ -549,14 +542,12 @@ export function ResultsTables({
                           'ref',
                           `auto-exact-td-ref${!exact ? ' auto-exact-cell--metric--disabled' : ''}`
                         )}
-                        {...(exact ? metricInteractProps(() => toggleCompare(term, 'roas', exact, 'ref', hasClicks)) : {})}
                       >
                         {exact != null ? formatRoas(exact.roas) : '—'}
                       </td>
                       {hasClicks && (
                         <td
                           className={cc('cvr', 'ref', `auto-exact-td-ref${!exact ? ' auto-exact-cell--metric--disabled' : ''}`)}
-                          {...(exact ? metricInteractProps(() => toggleCompare(term, 'cvr', exact, 'ref', hasClicks)) : {})}
                         >
                           {exact != null && exact.cvrPct != null ? `${exact.cvrPct.toFixed(1)}%` : '—'}
                         </td>
