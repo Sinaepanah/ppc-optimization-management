@@ -44,6 +44,14 @@ const CAMPAIGN_NAMES = ['Campaign Name', 'Campaign']
 const AD_GROUP_NAMES = ['Ad Group Name', 'Ad Group']
 const MATCH_TYPE_NAMES = ['Match Type']
 const TARGETING_NAMES = ['Targeting', 'Keyword', 'Target']
+const ROAS_NAMES = [
+  'ROAS',
+  'RoAS',
+  'Return on Advertising Spend',
+  '14 Day Total ROAS',
+  '7 Day Total ROAS',
+  'Total ROAS',
+]
 
 /** Normalize header for matching: trim, strip BOM and surrounding quotes, lowercase */
 function normHeader(h: string): string {
@@ -84,7 +92,20 @@ function findColumnOr(headers: string[], exactList: string[], ...contains: strin
 
 export function getHeaderSuggestions(rows: string[][]): ColumnMapping {
   if (rows.length === 0) {
-    return { searchTerm: 0, spend: -1, sales: -1, orders: -1, clicks: -1, impressions: -1, cpc: -1, campaignName: -1, adGroupName: -1, matchType: -1, targeting: -1 }
+    return {
+      searchTerm: 0,
+      spend: -1,
+      sales: -1,
+      orders: -1,
+      clicks: -1,
+      impressions: -1,
+      cpc: -1,
+      campaignName: -1,
+      adGroupName: -1,
+      matchType: -1,
+      targeting: -1,
+      roas: -1,
+    }
   }
   const rawHeaders = rows[0].map((h) => (h ?? '').trim().replace(/^\uFEFF/, '').replace(/^"+|"+$/g, ''))
   const headers = rawHeaders.length ? rawHeaders : []
@@ -101,6 +122,7 @@ export function getHeaderSuggestions(rows: string[][]): ColumnMapping {
     adGroupName: findColumn(headers, AD_GROUP_NAMES),
     matchType: findColumn(headers, MATCH_TYPE_NAMES),
     targeting: findColumn(headers, TARGETING_NAMES),
+    roas: findColumnOr(headers, ROAS_NAMES, 'roas', 'return on advertising'),
   }
 }
 
@@ -189,10 +211,22 @@ export function rowToRaw(row: string[]): RawRow {
 export function parseRow(raw: RawRow, mapping: ColumnMapping): ParsedRow | null {
   const term = str(raw[mapping.searchTerm] ?? '')
   if (!term) return null
+  const spend = num(raw[mapping.spend] ?? '')
+  const sales = num(raw[mapping.sales] ?? '')
+  let roas: number | null = null
+  if (spend > 0) {
+    const computed = sales / spend
+    if (mapping.roas >= 0) {
+      const r = num(raw[mapping.roas] ?? '')
+      roas = r > 0 && Number.isFinite(r) ? r : computed
+    } else {
+      roas = computed
+    }
+  }
   return {
     searchTerm: term,
-    spend: num(raw[mapping.spend] ?? ''),
-    sales: num(raw[mapping.sales] ?? ''),
+    spend,
+    sales,
     orders: num(raw[mapping.orders] ?? ''),
     clicks: mapping.clicks >= 0 ? num(raw[mapping.clicks] ?? '') : null,
     impressions: mapping.impressions >= 0 ? num(raw[mapping.impressions] ?? '') : null,
@@ -201,6 +235,7 @@ export function parseRow(raw: RawRow, mapping: ColumnMapping): ParsedRow | null 
     adGroupName: mapping.adGroupName >= 0 ? str(raw[mapping.adGroupName] ?? '') || null : null,
     matchType: mapping.matchType >= 0 ? str(raw[mapping.matchType] ?? '') || null : null,
     targeting: mapping.targeting >= 0 ? str(raw[mapping.targeting] ?? '') || null : null,
+    roas,
   }
 }
 

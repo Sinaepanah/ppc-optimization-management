@@ -14,6 +14,8 @@ export interface ColumnMapping {
   adGroupName: number
   matchType: number
   targeting: number
+  /** Amazon Search Term report: ROAS column when present (-1 = not mapped; still derive from Sales/Spend for display). */
+  roas: number
 }
 
 /** Parsed row with typed metrics (after mapping) */
@@ -29,6 +31,8 @@ export interface ParsedRow {
   adGroupName: string | null
   matchType: string | null
   targeting: string | null
+  /** Return on ad spend (Sales/Spend); from report column when mapped, else same ratio from Sales/Spend. */
+  roas: number | null
 }
 
 /** Aggregated by normalized term */
@@ -49,6 +53,8 @@ export interface AggregatedTerm {
   suggestedCpc: number | null
   /** Match type that contributed most spend (auto, broad, phrase) for performance comparison label */
   primaryMatchType: string | null
+  /** Spend-weighted ROAS (uses report column when mapped). */
+  roas: number | null
 }
 
 /** Promotion criteria (thresholds) */
@@ -89,6 +95,7 @@ export const DEFAULT_COLUMN_MAPPING: ColumnMapping = {
   adGroupName: -1,
   matchType: -1,
   targeting: -1,
+  roas: -1,
 }
 
 export const DEFAULT_CRITERIA: PromotionCriteria = {

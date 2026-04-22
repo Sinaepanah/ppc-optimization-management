@@ -63,6 +63,7 @@ function mergeCsvRowsWithManualLines(
     mapping.adGroupName,
     mapping.matchType,
     mapping.targeting,
+    mapping.roas,
   ]
   for (const idx of idxs) {
     if (idx >= 0) w = Math.max(w, idx + 1)
@@ -94,6 +95,7 @@ function scoredStubForManualExport(originalTerm: string, normalizedTerm: string)
     rowCount: 1,
     suggestedCpc: null,
     primaryMatchType: null,
+    roas: null,
     acosPct: 0,
     cvrPct: null,
     confidence: 0,

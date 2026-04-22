@@ -113,6 +113,8 @@ export interface ReferenceExactMetrics {
   acosPct: number
   clicks: number
   cvrPct: number | null
+  /** Sales / Spend when spend is positive (Exact export has no ROAS column). */
+  roas: number | null
 }
 
 export interface ReferenceExactResult {
@@ -196,6 +198,7 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
 
     const acosPct = sales > 0 ? (spend / sales) * 100 : 0
     const cvrPct = clicks > 0 ? (orders / clicks) * 100 : null
+    const roas = spend > 0 ? sales / spend : null
 
     const existing = metricsByKeyword.get(key)
     if (existing) {
@@ -205,6 +208,7 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
       existing.clicks += clicks
       existing.acosPct = existing.sales > 0 ? (existing.spend / existing.sales) * 100 : 0
       existing.cvrPct = existing.clicks > 0 ? (existing.orders / existing.clicks) * 100 : null
+      existing.roas = existing.spend > 0 ? existing.sales / existing.spend : null
     } else {
       metricsByKeyword.set(key, {
         orders,
@@ -213,6 +217,7 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
         acosPct,
         clicks,
         cvrPct,
+        roas,
       })
     }
   }

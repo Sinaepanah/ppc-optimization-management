@@ -13,6 +13,7 @@ const FIELDS: { key: keyof ColumnMapping; label: string; required: boolean }[] =
   { key: 'spend', label: 'Spend', required: true },
   { key: 'sales', label: 'Sales', required: true },
   { key: 'orders', label: 'Orders', required: true },
+  { key: 'roas', label: 'ROAS (optional)', required: false },
   { key: 'clicks', label: 'Clicks', required: false },
   { key: 'impressions', label: 'Impressions', required: false },
   { key: 'cpc', label: 'CPC', required: false },

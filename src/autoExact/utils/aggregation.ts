@@ -21,6 +21,8 @@ export function aggregateByNormalizedTerm(
   const map = new Map<string, AggregatedTerm>()
   const spendByMatchType = new Map<string, Map<string, number>>()
   const campaignsByTerm = new Map<string, Set<string>>()
+  const roasNumByTerm = new Map<string, number>()
+  const roasDenByTerm = new Map<string, number>()
 
   for (let i = start; i < rows.length; i++) {
     const raw = rowToRaw(rows[i])
@@ -47,6 +49,10 @@ export function aggregateByNormalizedTerm(
     if (campaignName) campaignsByTerm.get(norm)!.add(campaignName)
 
     const existing = map.get(norm)
+    if (parsed.roas != null && parsed.spend > 0) {
+      roasNumByTerm.set(norm, (roasNumByTerm.get(norm) ?? 0) + parsed.roas * parsed.spend)
+      roasDenByTerm.set(norm, (roasDenByTerm.get(norm) ?? 0) + parsed.spend)
+    }
     if (existing) {
       existing.spendSum += parsed.spend
       existing.salesSum += parsed.sales
@@ -69,6 +75,7 @@ export function aggregateByNormalizedTerm(
         rowCount: 1,
         suggestedCpc,
         primaryMatchType: matchType,
+        roas: null,
       })
     }
   }
@@ -89,6 +96,9 @@ export function aggregateByNormalizedTerm(
     agg.campaignNames = Array.from(campaignsByTerm.get(agg.normalizedTerm) ?? [])
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
     if (!agg.campaignName && agg.campaignNames.length > 0) agg.campaignName = agg.campaignNames[0] ?? null
+    const rd = roasDenByTerm.get(agg.normalizedTerm) ?? 0
+    const rn = roasNumByTerm.get(agg.normalizedTerm) ?? 0
+    agg.roas = rd > 0 ? rn / rd : null
     return agg
   })
 }
@@ -126,6 +136,7 @@ export function oneRowPerCsvRow(
       rowCount: 1,
       suggestedCpc,
       primaryMatchType: normalizeMatchType(parsed.matchType),
+      roas: parsed.roas,
     })
   }
   return result

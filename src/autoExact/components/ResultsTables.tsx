@@ -16,6 +16,10 @@ function referenceActualCpc(exact: ReferenceExactMetrics | null): number | null 
   return exact.spend / exact.clicks
 }
 
+function formatRoas(n: number | null | undefined): string {
+  return n != null && Number.isFinite(n) ? n.toFixed(2) : '—'
+}
+
 /** Metrics that exist on both source and reference rows (pair compare + green winner) */
 type PairCompareField = 'orders' | 'acos' | 'clicks' | 'cvr'
 
@@ -115,6 +119,7 @@ type PromoteSortKey =
   | 'salesSum'
   | 'spendSum'
   | 'acosPct'
+  | 'sourceRoas'
   | 'clicksSum'
   | 'cvrPct'
   | 'sourceCurrCpc'
@@ -122,6 +127,7 @@ type PromoteSortKey =
   | 'refClicks'
   | 'refOrders'
   | 'refAcos'
+  | 'refRoas'
   | 'refCvr'
   | 'refCurrCpc'
 
@@ -214,6 +220,9 @@ export function ResultsTables({
         case 'acosPct':
           cmp = ra.acosPct - rb.acosPct
           break
+        case 'sourceRoas':
+          cmp = (ra.roas ?? -1) - (rb.roas ?? -1)
+          break
         case 'clicksSum':
           cmp = ra.clicksSum - rb.clicksSum
           break
@@ -248,6 +257,12 @@ export function ResultsTables({
           const ea = lookupRef(ra.normalizedTerm)
           const eb = lookupRef(rb.normalizedTerm)
           cmp = (ea?.acosPct ?? -1) - (eb?.acosPct ?? -1)
+          break
+        }
+        case 'refRoas': {
+          const ea = lookupRef(ra.normalizedTerm)
+          const eb = lookupRef(rb.normalizedTerm)
+          cmp = (ea?.roas ?? -1) - (eb?.roas ?? -1)
           break
         }
         case 'refCvr': {
@@ -353,6 +368,9 @@ export function ResultsTables({
                   <SortableTh colKey="acosPct" rowSpan={2}>
                     ACoS
                   </SortableTh>
+                  <SortableTh colKey="sourceRoas" rowSpan={2}>
+                    ROAS
+                  </SortableTh>
                   {hasClicks && (
                     <SortableTh colKey="clicksSum" rowSpan={2}>
                       Clicks
@@ -369,7 +387,7 @@ export function ResultsTables({
                   <SortableTh colKey="suggestedCpc" rowSpan={2}>
                     CPC ({targetAcosForCpc}%)
                   </SortableTh>
-                  <th colSpan={hasClicks ? 5 : 4} className="auto-exact-th-group-ref" scope="colgroup">
+                  <th colSpan={hasClicks ? 6 : 5} className="auto-exact-th-group-ref" scope="colgroup">
                     Reference Exact
                   </th>
                   <th rowSpan={2} className="auto-exact-th-performance" scope="col">
@@ -385,6 +403,9 @@ export function ResultsTables({
                   </SortableTh>
                   <SortableTh colKey="refAcos" className="auto-exact-th-ref">
                     ACoS
+                  </SortableTh>
+                  <SortableTh colKey="refRoas" className="auto-exact-th-ref">
+                    ROAS
                   </SortableTh>
                   {hasClicks && (
                     <SortableTh colKey="refCvr" className="auto-exact-th-ref">
@@ -446,6 +467,7 @@ export function ResultsTables({
                       >
                         {row.acosPct.toFixed(1)}%
                       </td>
+                      <td>{formatRoas(row.roas)}</td>
                       {hasClicks && (
                         <td
                           className={cc('clicks', 'source')}
@@ -504,6 +526,9 @@ export function ResultsTables({
                       >
                         {exact != null ? `${exact.acosPct.toFixed(1)}%` : '—'}
                       </td>
+                      <td className={`auto-exact-td-ref${!exact ? ' auto-exact-cell--metric--disabled' : ''}`}>
+                        {exact != null ? formatRoas(exact.roas) : '—'}
+                      </td>
                       {hasClicks && (
                         <td
                           className={cc('cvr', 'ref', `auto-exact-td-ref${!exact ? ' auto-exact-cell--metric--disabled' : ''}`)}
@@ -549,6 +574,7 @@ export function ResultsTables({
                   <th scope="col">Sales</th>
                   <th scope="col">Spend</th>
                   <th scope="col">ACoS</th>
+                  <th scope="col">ROAS</th>
                   {hasClicks && <th scope="col">Clicks</th>}
                   {hasClicks && <th scope="col">CVR</th>}
                   <th scope="col">Curr. CPC</th>
@@ -568,6 +594,7 @@ export function ResultsTables({
                     <td>{row.salesSum.toFixed(2)}</td>
                     <td>{row.spendSum.toFixed(2)}</td>
                     <td>{row.acosPct.toFixed(1)}%</td>
+                    <td>{formatRoas(row.roas)}</td>
                     {hasClicks && <td>{row.clicksSum}</td>}
                     {hasClicks && <td>{row.cvrPct != null ? `${row.cvrPct.toFixed(1)}%` : '—'}</td>}
                     <td>
