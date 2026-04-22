@@ -21,7 +21,7 @@ function formatRoas(n: number | null | undefined): string {
 }
 
 /** Metrics that exist on both source and reference rows (pair compare + green winner) */
-type PairCompareField = 'orders' | 'acos' | 'clicks' | 'cvr'
+type PairCompareField = 'orders' | 'acos' | 'roas' | 'clicks' | 'cvr'
 
 /** Source-only metrics (highlight only, no green vs ref) */
 type SourceOnlyField = 'sales' | 'spend' | 'cpc'
@@ -54,6 +54,18 @@ function compareMetricWinner(
     if (row.salesSum <= 0 && exact.sales > 0) return 'ref'
     return null
   }
+  if (field === 'roas') {
+    const sr = row.roas
+    const er = exact.roas
+    if (sr != null && er != null) {
+      if (sr > er) return 'source'
+      if (er > sr) return 'ref'
+      return null
+    }
+    if (sr != null && er == null) return 'source'
+    if (sr == null && er != null) return 'ref'
+    return null
+  }
   if (field === 'cvr') {
     if (row.clicksSum > 0 && exact.clicks > 0) {
       const sc = row.cvrPct ?? 0
@@ -80,7 +92,7 @@ function compareCellClass(
   if (field === 'cvr' && !hasClicks) {
     return side === 'ref' && exact ? 'auto-exact-cell--compare-highlight' : ''
   }
-  const pairFields: PairCompareField[] = ['orders', 'acos', 'clicks', 'cvr']
+  const pairFields: PairCompareField[] = ['orders', 'acos', 'roas', 'clicks', 'cvr']
   const isPair = (pairFields as string[]).includes(field)
   if (!isPair) {
     return side === 'source' ? 'auto-exact-cell--compare-highlight' : ''
@@ -467,7 +479,12 @@ export function ResultsTables({
                       >
                         {row.acosPct.toFixed(1)}%
                       </td>
-                      <td>{formatRoas(row.roas)}</td>
+                      <td
+                        className={cc('roas', 'source')}
+                        {...metricInteractProps(() => toggleCompare(term, 'roas', exact, 'source', hasClicks))}
+                      >
+                        {formatRoas(row.roas)}
+                      </td>
                       {hasClicks && (
                         <td
                           className={cc('clicks', 'source')}
@@ -526,7 +543,14 @@ export function ResultsTables({
                       >
                         {exact != null ? `${exact.acosPct.toFixed(1)}%` : '—'}
                       </td>
-                      <td className={`auto-exact-td-ref${!exact ? ' auto-exact-cell--metric--disabled' : ''}`}>
+                      <td
+                        className={cc(
+                          'roas',
+                          'ref',
+                          `auto-exact-td-ref${!exact ? ' auto-exact-cell--metric--disabled' : ''}`
+                        )}
+                        {...(exact ? metricInteractProps(() => toggleCompare(term, 'roas', exact, 'ref', hasClicks)) : {})}
+                      >
                         {exact != null ? formatRoas(exact.roas) : '—'}
                       </td>
                       {hasClicks && (
