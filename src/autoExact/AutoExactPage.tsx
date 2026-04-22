@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { TopicProfile } from '../types'
 import { aggregateByNormalizedTerm, oneRowPerCsvRow } from './utils/aggregation'
 import { getHeaderSuggestions } from './utils/csvHelpers'
 import { getPromoteList, getReviewQueue, runScoring } from './utils/scoring'
-import type { ColumnMapping, PromotionCriteria } from './types'
+import type { ColumnMapping, PromotionCriteria, ScoredTerm } from './types'
 import { DEFAULT_COLUMN_MAPPING, DEFAULT_CRITERIA } from './types'
 import { ColumnMapper, getMissingRequired } from './components/ColumnMapper'
 import { CriteriaPanel } from './components/CriteriaPanel'
@@ -11,11 +11,94 @@ import { ExportButtons } from './components/ExportButtons'
 import { ReferenceExactUploader } from './components/ReferenceExactUploader'
 import { BracketKeywordCopyTable } from './components/BracketKeywordCopyTable'
 import { ResultsTables } from './components/ResultsTables'
+import { ManualKeywordsVsReference } from './components/ManualKeywordsVsReference'
 import { Uploader } from './components/Uploader'
-import type { ReferenceExactResult } from './utils/referenceExact'
+import { normalize } from '../utils/normalize'
+import {
+  lookupReferenceMetrics,
+  manualExactKeywordSegmentsFromLines,
+  type ReferenceExactResult,
+} from './utils/referenceExact'
 
 interface AutoExactPageProps {
   profiles: TopicProfile[]
+}
+
+const CUSTOM_MANUAL_KEYWORDS_LABEL = 'CUSTOM MANUAL KEYWORDS'
+
+/** Minimal Search Term report shape so `getHeaderSuggestions` maps required columns without a CSV upload. */
+function buildSyntheticManualOnlyRows(lines: string[]): string[][] {
+  const header = ['Search Term', 'Spend', 'Sales', 'Orders']
+  return [header, ...lines.map((t) => [t, '', '', ''])]
+}
+
+function padRowToWidth(row: string[], width: number): string[] {
+  if (row.length >= width) return row.slice(0, width)
+  return [...row, ...Array(width - row.length).fill('')]
+}
+
+function mergeCsvRowsWithManualLines(
+  csvRows: string[][],
+  manualKeywordSegments: string[],
+  mapping: ColumnMapping
+): string[][] {
+  if (manualKeywordSegments.length === 0) return csvRows
+  if (csvRows.length === 0) return buildSyntheticManualOnlyRows(manualKeywordSegments)
+
+  const header0 = csvRows[0] ?? []
+  let w = header0.length
+  for (let i = 1; i < csvRows.length; i++) {
+    w = Math.max(w, csvRows[i]?.length ?? 0)
+  }
+  const idxs: number[] = [
+    mapping.searchTerm,
+    mapping.spend,
+    mapping.sales,
+    mapping.orders,
+    mapping.clicks,
+    mapping.impressions,
+    mapping.cpc,
+    mapping.campaignName,
+    mapping.adGroupName,
+    mapping.matchType,
+    mapping.targeting,
+  ]
+  for (const idx of idxs) {
+    if (idx >= 0) w = Math.max(w, idx + 1)
+  }
+
+  const header = padRowToWidth(header0, w)
+  const body = csvRows.slice(1).map((r) => padRowToWidth(r, w))
+  const manualRows = manualKeywordSegments.map((term) => {
+    const r: string[] = Array(w).fill('')
+    const st = mapping.searchTerm
+    if (st >= 0 && st < w) r[st] = term
+    return r
+  })
+  return [header, ...body, ...manualRows]
+}
+
+/** Placeholder scored row so BracketKeywordCopyTable can render manual “not in reference” picks like Promote rows. */
+function scoredStubForManualExport(originalTerm: string, normalizedTerm: string): ScoredTerm {
+  return {
+    normalizedTerm,
+    originalTerm,
+    spendSum: 0,
+    salesSum: 0,
+    ordersSum: 0,
+    clicksSum: 0,
+    impressionsSum: 0,
+    campaignName: null,
+    campaignNames: [],
+    rowCount: 1,
+    suggestedCpc: null,
+    primaryMatchType: null,
+    acosPct: 0,
+    cvrPct: null,
+    confidence: 0,
+    qualifies: false,
+    inReviewQueue: false,
+  }
 }
 
 export function AutoExactPage({ profiles }: AutoExactPageProps) {
@@ -33,6 +116,10 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   const [hideAlreadyExact, setHideAlreadyExact] = useState(false)
   const [analyzed, setAnalyzed] = useState(false)
   const [sourceCsvNames, setSourceCsvNames] = useState<string[]>([])
+  const [manualKeywordText, setManualKeywordText] = useState('')
+  const [selectedManualNotInRefIndices, setSelectedManualNotInRefIndices] = useState<Set<number>>(new Set())
+  const prevHadCsvRows = useRef(false)
+  const prevManualNonEmpty = useRef(false)
 
   const handleRowsLoaded = useCallback(
     (newRows: string[][], firstRowIsHeader: boolean, meta?: { sourceFileNames?: string[] }) => {
@@ -51,15 +138,53 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
     []
   )
 
+  const manualLinesRaw = useMemo(
+    () => manualKeywordText.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
+    [manualKeywordText]
+  )
+
+  const manualKeywordSegments = useMemo(
+    () => manualExactKeywordSegmentsFromLines(manualLinesRaw),
+    [manualLinesRaw]
+  )
+
+  const effectiveRows = useMemo(
+    () => mergeCsvRowsWithManualLines(rows, manualKeywordSegments, mapping),
+    [rows, manualKeywordSegments, mapping]
+  )
+
+  useEffect(() => {
+    const csvEmpty = rows.length === 0
+    const manualNonEmpty = manualKeywordSegments.length > 0
+    if (csvEmpty && manualNonEmpty) {
+      const syn = buildSyntheticManualOnlyRows(manualKeywordSegments)
+      const shouldApply =
+        (!prevManualNonEmpty.current && manualNonEmpty) ||
+        (prevHadCsvRows.current && rows.length === 0)
+      if (shouldApply) {
+        setMapping(getHeaderSuggestions(syn))
+        setHasHeader(true)
+      }
+    }
+    prevHadCsvRows.current = rows.length > 0
+    prevManualNonEmpty.current = manualNonEmpty
+  }, [rows.length, manualKeywordSegments])
+
+  useEffect(() => {
+    setAnalyzed(false)
+    setSelectedManualNotInRefIndices(new Set())
+  }, [manualKeywordText])
+
   const missingRequired = useMemo(() => getMissingRequired(mapping), [mapping])
-  const canAnalyze = rows.length > 0 && missingRequired.length === 0
+  const hasAnySourceRows = effectiveRows.length > (hasHeader ? 1 : 0)
+  const canAnalyze = hasAnySourceRows && missingRequired.length === 0
 
   const aggregated = useMemo(() => {
-    if (rows.length === 0 || missingRequired.length > 0) return []
+    if (!hasAnySourceRows || missingRequired.length > 0) return []
     return aggregateByTerm
-      ? aggregateByNormalizedTerm(rows, mapping, hasHeader)
-      : oneRowPerCsvRow(rows, mapping, hasHeader)
-  }, [rows, mapping, hasHeader, missingRequired.length, aggregateByTerm])
+      ? aggregateByNormalizedTerm(effectiveRows, mapping, hasHeader)
+      : oneRowPerCsvRow(effectiveRows, mapping, hasHeader)
+  }, [effectiveRows, mapping, hasHeader, missingRequired.length, aggregateByTerm, hasAnySourceRows])
 
   const scored = useMemo(() => runScoring(aggregated, criteria, profiles), [aggregated, criteria, profiles])
   const promoteList = useMemo(() => getPromoteList(scored), [scored])
@@ -82,7 +207,28 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
     [displayList, selectedPromoteIndices]
   )
 
-  const hasClicks = mapping.clicks >= 0 && rows.length > 0
+  const combinedBracketExportTerms = useMemo(() => {
+    const map = referenceExactData?.metricsByKeyword ?? null
+    const asinFilter = asin.trim() || null
+    const extras: ScoredTerm[] = []
+    for (const index of selectedManualNotInRefIndices) {
+      const seg = manualKeywordSegments[index]
+      if (!seg) continue
+      const norm = normalize(seg)
+      if (!norm) continue
+      if (lookupReferenceMetrics(map, norm, asinFilter)) continue
+      extras.push(scoredStubForManualExport(seg, norm))
+    }
+    return [...selectedPromoteList, ...extras]
+  }, [
+    selectedPromoteList,
+    selectedManualNotInRefIndices,
+    manualKeywordSegments,
+    referenceExactData?.metricsByKeyword,
+    asin,
+  ])
+
+  const hasClicks = mapping.clicks >= 0 && hasAnySourceRows
 
   const handleAnalyze = useCallback(() => {
     setAnalyzed(true)
@@ -95,6 +241,8 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
           currentRows={rows}
           sourceCsvNames={sourceCsvNames}
           onRowsLoaded={handleRowsLoaded}
+          manualKeywordText={manualKeywordText}
+          onManualKeywordTextChange={setManualKeywordText}
         />
         <ReferenceExactUploader
           onDataLoaded={setReferenceExactData}
@@ -103,10 +251,21 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
         />
       </div>
 
-      {rows.length > 0 && (
+      {manualKeywordSegments.length > 0 && (
+        <ManualKeywordsVsReference
+          manualSegments={manualKeywordSegments}
+          referenceExactData={referenceExactData}
+          exportAsin={asin}
+          onExportAsinChange={setAsin}
+          selectedNotInRefIndices={selectedManualNotInRefIndices}
+          onSelectedNotInRefChange={setSelectedManualNotInRefIndices}
+        />
+      )}
+
+      {hasAnySourceRows && (
         <>
           <ColumnMapper
-            rows={rows}
+            rows={effectiveRows}
             mapping={mapping}
             onMappingChange={setMapping}
             missingRequired={missingRequired}
@@ -154,7 +313,7 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
                 bracketCopySection={
                   wrapInBrackets ? (
                     <BracketKeywordCopyTable
-                      selectedTerms={selectedPromoteList}
+                      selectedTerms={combinedBracketExportTerms}
                       intent={intent}
                       asin={asin}
                       embedded
@@ -196,7 +355,9 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
         </>
       )}
 
-      {rows.length === 0 && <p className="muted auto-exact-empty-hint">Load Source CSVs above to continue.</p>}
+      {!hasAnySourceRows && (
+        <p className="muted auto-exact-empty-hint">Load Source CSVs or enter {CUSTOM_MANUAL_KEYWORDS_LABEL} above to continue.</p>
+      )}
     </div>
   )
 }

@@ -20,6 +20,7 @@ export function aggregateByNormalizedTerm(
   const start = skipHeaderRow ? 1 : 0
   const map = new Map<string, AggregatedTerm>()
   const spendByMatchType = new Map<string, Map<string, number>>()
+  const campaignsByTerm = new Map<string, Set<string>>()
 
   for (let i = start; i < rows.length; i++) {
     const raw = rowToRaw(rows[i])
@@ -42,6 +43,8 @@ export function aggregateByNormalizedTerm(
     const mtMap = spendByMatchType.get(norm)!
     const key = matchType ?? '_unknown'
     mtMap.set(key, (mtMap.get(key) ?? 0) + parsed.spend)
+    if (!campaignsByTerm.has(norm)) campaignsByTerm.set(norm, new Set<string>())
+    if (campaignName) campaignsByTerm.get(norm)!.add(campaignName)
 
     const existing = map.get(norm)
     if (existing) {
@@ -62,6 +65,7 @@ export function aggregateByNormalizedTerm(
         clicksSum: parsed.clicks ?? 0,
         impressionsSum: parsed.impressions ?? 0,
         campaignName,
+        campaignNames: campaignName ? [campaignName] : [],
         rowCount: 1,
         suggestedCpc,
         primaryMatchType: matchType,
@@ -82,6 +86,9 @@ export function aggregateByNormalizedTerm(
       }
       agg.primaryMatchType = best ?? agg.primaryMatchType ?? null
     }
+    agg.campaignNames = Array.from(campaignsByTerm.get(agg.normalizedTerm) ?? [])
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    if (!agg.campaignName && agg.campaignNames.length > 0) agg.campaignName = agg.campaignNames[0] ?? null
     return agg
   })
 }
@@ -115,6 +122,7 @@ export function oneRowPerCsvRow(
       clicksSum: parsed.clicks ?? 0,
       impressionsSum: parsed.impressions ?? 0,
       campaignName: parsed.campaignName ?? null,
+      campaignNames: parsed.campaignName ? [parsed.campaignName] : [],
       rowCount: 1,
       suggestedCpc,
       primaryMatchType: normalizeMatchType(parsed.matchType),

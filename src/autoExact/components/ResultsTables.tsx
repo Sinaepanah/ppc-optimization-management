@@ -340,6 +340,7 @@ export function ResultsTables({
                   <SortableTh colKey="originalTerm" rowSpan={2} className="auto-exact-th-term">
                     Term
                   </SortableTh>
+                  <th rowSpan={2} scope="col">Campaign(s)</th>
                   <SortableTh colKey="ordersSum" rowSpan={2}>
                     Orders
                   </SortableTh>
@@ -417,6 +418,9 @@ export function ResultsTables({
                       </td>
                       <td className="results-table__keyword" title={row.originalTerm}>
                         {row.originalTerm}
+                      </td>
+                      <td title={row.campaignNames.join(', ')}>
+                        {row.campaignNames.length > 0 ? row.campaignNames.join(', ') : '—'}
                       </td>
                       <td
                         className={cc('orders', 'source')}
@@ -540,6 +544,7 @@ export function ResultsTables({
               <thead>
                 <tr>
                   <th scope="col">Term</th>
+                  <th scope="col">Campaign(s)</th>
                   <th scope="col">Orders</th>
                   <th scope="col">Sales</th>
                   <th scope="col">Spend</th>
@@ -555,6 +560,9 @@ export function ResultsTables({
                   <tr key={`review-${row.normalizedTerm}-${i}`}>
                     <td className="results-table__keyword" title={row.originalTerm}>
                       {row.originalTerm}
+                    </td>
+                    <td title={row.campaignNames.join(', ')}>
+                      {row.campaignNames.length > 0 ? row.campaignNames.join(', ') : '—'}
                     </td>
                     <td>{row.ordersSum}</td>
                     <td>{row.salesSum.toFixed(2)}</td>

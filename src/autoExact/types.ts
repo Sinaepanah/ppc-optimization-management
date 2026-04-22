@@ -41,6 +41,8 @@ export interface AggregatedTerm {
   clicksSum: number
   impressionsSum: number
   campaignName: string | null
+  /** Distinct campaign names contributing to this term (for merged multi-campaign reports). */
+  campaignNames: string[]
   /** Number of CSV rows combined into this term (same normalized term) */
   rowCount: number
   /** Suggested CPC from CSV or Spend/Clicks (for Exact campaign) */
