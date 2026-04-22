@@ -338,7 +338,7 @@ export function ResultsTables({
           <p className="muted">No terms qualify.</p>
         ) : (
           <div
-            className="table-wrap table-wrap--compact table-wrap--promote"
+            className="table-wrap table-wrap--compact table-wrap--promote table-wrap--promote-sticky"
             role="region"
             aria-labelledby="promote-to-exact-heading"
             tabIndex={-1}
@@ -576,7 +576,7 @@ export function ResultsTables({
         {reviewQueue.length === 0 ? (
           <p className="muted">None.</p>
         ) : (
-          <div className="table-wrap table-wrap--compact table-wrap--review" role="region" aria-labelledby="review-queue-heading" tabIndex={-1}>
+          <div className="table-wrap table-wrap--compact table-wrap--review table-wrap--review-sticky" role="region" aria-labelledby="review-queue-heading" tabIndex={-1}>
             <table className="results-table results-table--compact results-table--review">
               <caption className="sr-only">
                 Borderline terms that nearly qualify for promotion. Read-only summary.

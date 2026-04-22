@@ -34,6 +34,8 @@
   --shadow-button: 0 2px 8px rgba(79, 70, 229, 0.3);
   --transition: 0.2s ease;
   --transition-fast: 0.15s ease;
+  /* Sticky table headers sit below the app’s sticky tab bar (see .tab-groups) */
+  --app-tabs-sticky-offset: 6.75rem;
 }
 
 /* ===== Base ===== */
@@ -2414,11 +2416,10 @@ input[type="file"]::file-selector-button:hover {
   background: rgba(236, 242, 249, 0.98);
 }
 
-/* Promote table: sticky Term + checkbox (horizontal); thead also uses top for page-scroll freeze */
+/* Promote table: sticky Term + checkbox (horizontal); vertical top comes from thead row rule */
 .results-table--promote thead .auto-exact-th-checkbox {
   position: sticky;
   left: 0;
-  top: 0;
   z-index: 15;
   background: var(--color-surface);
   box-shadow: 4px 0 10px -6px rgba(15, 23, 42, 0.12);
@@ -2435,7 +2436,6 @@ input[type="file"]::file-selector-button:hover {
 .results-table--promote thead .auto-exact-th-term {
   position: sticky;
   left: 2.5rem;
-  top: 0;
   z-index: 14;
   background: var(--color-surface);
   box-shadow: 4px 0 12px -6px rgba(15, 23, 42, 0.1);
@@ -2577,14 +2577,20 @@ input[type="file"]::file-selector-button:hover {
   vertical-align: top;
 }
 
-/* Promote table: freeze header while scrolling the page (no max-height / inner scroll on wrapper) */
+/* Freeze header: table wrap must not use overflow:auto/x — that traps sticky to the box instead of the viewport */
+.table-wrap.table-wrap--compact.table-wrap--promote.table-wrap--promote-sticky,
+.table-wrap.table-wrap--compact.table-wrap--review.table-wrap--review-sticky {
+  overflow: visible;
+  max-width: 100%;
+}
+
 .results-table--promote {
-  --promote-thead-r2-top: 2.9rem;
+  --promote-thead-r1-height: 2.9rem;
 }
 
 .results-table--promote thead tr:first-child > th {
   position: sticky;
-  top: 0;
+  top: var(--app-tabs-sticky-offset);
   z-index: 12;
   background: var(--color-surface);
   background-clip: padding-box;
@@ -2611,7 +2617,7 @@ input[type="file"]::file-selector-button:hover {
 
 .results-table--promote thead tr:last-child > th {
   position: sticky;
-  top: var(--promote-thead-r2-top);
+  top: calc(var(--app-tabs-sticky-offset) + var(--promote-thead-r1-height));
   z-index: 11;
   background-clip: padding-box;
   box-shadow: 0 1px 0 var(--color-border);
@@ -2623,7 +2629,7 @@ input[type="file"]::file-selector-button:hover {
 
 .results-table--review thead th {
   position: sticky;
-  top: 0;
+  top: var(--app-tabs-sticky-offset);
   z-index: 6;
   background: var(--color-surface);
   background-clip: padding-box;
