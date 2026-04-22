@@ -12,16 +12,46 @@ import { parseCSV } from '../../utils/csv'
 export function extractKeywordFromExactTitle(title: string): string | null {
   if (!title || typeof title !== 'string') return null
   const s = title.trim()
+
   const match = s.match(/\)\s*[Il]\s+(.+?)\s+I\s+EXACT\s+/i)
   if (match && match[1]) return match[1].trim()
-  return null
+
+  const spForm = s.match(/\)\s*[Il]\s+(.+?)\s+I\s+EXACT\s+I\s+SP\s+I\s+[A-Z0-9]{8,12}\s*$/i)
+  if (spForm && spForm[1]) return spForm[1].trim()
+
+  /** Titles that end with ` I B0…` but skip the usual keyword ` I EXACT ` slot (e.g. SB / other suffixes). */
+  const asinAtEnd = s.match(/\s+I\s+(B[0-9A-Z]{9})\s*$/i)
+  if (!asinAtEnd) return null
+  const prefix = s.slice(0, s.length - asinAtEnd[0].length).trim()
+  const loose = prefix.match(/\)\s*[Il]\s+(.+)/i)
+  return loose?.[1]?.trim() || null
 }
 
-/** ASIN segment at end of title: ... I SP I B09BHZWY78 */
+/**
+ * CUSTOM MANUAL KEYWORDS (Auto → Exact): each line is the **keyword** segment from
+ * `(INTENT) I keyword I EXACT I SP I ASIN`, matching how the Reference Exact CSV keys terms.
+ * If a line is a full campaign title, the keyword is taken via {@link extractKeywordFromExactTitle};
+ * otherwise the trimmed line is used as-is. Does not affect uploaded Search Term CSV rows.
+ */
+export function manualExactKeywordSegmentsFromLines(rawLines: string[]): string[] {
+  const out: string[] = []
+  for (const raw of rawLines) {
+    const t = String(raw ?? '').trim()
+    if (!t) continue
+    const seg = (extractKeywordFromExactTitle(t) ?? t).trim()
+    if (seg) out.push(seg)
+  }
+  return out
+}
+
+/** ASIN: prefer `… I SP I B0…`; else last ` I B0…` segment (SB / legacy rows). */
 export function extractAsinFromExactTitle(title: string): string | null {
   const s = String(title ?? '').trim()
-  const m = s.match(/\bI\s+SP\s+I\s+([A-Z0-9]{8,12})\s*$/i)
-  return m ? m[1].trim().toUpperCase() : null
+  let m = s.match(/\bI\s+SP\s+I\s+([A-Z0-9]{8,12})\s*$/i)
+  if (m) return m[1].trim().toUpperCase()
+  m = s.match(/\bI\s+(B[0-9A-Z]{9})\s*$/i)
+  if (m) return m[1].trim().toUpperCase()
+  return null
 }
 
 /** Separator for Map keys: normalized keyword + ASIN (must not appear in norm or ASIN) */
@@ -93,6 +123,16 @@ export interface ReferenceExactResult {
   campaignRowCount: number
   /** Normalized keywords present in any reference row (for “hide already in Exact”) */
   normalizedTermsInReference: Set<string>
+  /** Normalized campaign names present in uploaded Reference Exact CSV. */
+  campaignNamesInReference: Set<string>
+}
+
+export function normalizeCampaignNameForMatch(name: string): string {
+  return String(name ?? '')
+    .trim()
+    .replace(/^"+|"+$/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
 }
 
 /**
@@ -111,9 +151,10 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
   const keywords = new Set<string>()
   const metricsByKeyword = new Map<string, ReferenceExactMetrics>()
   const normalizedTermsInReference = new Set<string>()
+  const campaignNamesInReference = new Set<string>()
 
   if (rows.length < 2) {
-    return { keywords, metricsByKeyword, campaignRowCount: 0, normalizedTermsInReference }
+    return { keywords, metricsByKeyword, campaignRowCount: 0, normalizedTermsInReference, campaignNamesInReference }
   }
 
   let campaignRowCount = 0
@@ -128,6 +169,8 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i]
     const campaignCell = (row[campaignCol] ?? '').trim().replace(/^"+|"+$/g, '')
+    const normalizedCampaignName = normalizeCampaignNameForMatch(campaignCell)
+    if (normalizedCampaignName) campaignNamesInReference.add(normalizedCampaignName)
     let keyword = extractKeywordFromExactTitle(campaignCell)
     if (!keyword && targetingCol >= 0) {
       const targetingCell = (row[targetingCol] ?? '').trim().replace(/^"+|"+$/g, '')
@@ -174,5 +217,5 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
     }
   }
 
-  return { keywords, metricsByKeyword, campaignRowCount, normalizedTermsInReference }
+  return { keywords, metricsByKeyword, campaignRowCount, normalizedTermsInReference, campaignNamesInReference }
 }

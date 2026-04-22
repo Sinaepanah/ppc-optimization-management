@@ -17,6 +17,7 @@ import { normalize } from '../utils/normalize'
 import {
   lookupReferenceMetrics,
   manualExactKeywordSegmentsFromLines,
+  normalizeCampaignNameForMatch,
   type ReferenceExactResult,
 } from './utils/referenceExact'
 
@@ -153,6 +154,22 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
     [rows, manualKeywordSegments, mapping]
   )
 
+  const effectiveRowsWithoutReferenceCampaigns = useMemo(() => {
+    if (effectiveRows.length === 0) return effectiveRows
+    const excludedCampaigns = referenceExactData?.campaignNamesInReference
+    if (!excludedCampaigns || excludedCampaigns.size === 0) return effectiveRows
+    if (mapping.campaignName < 0) return effectiveRows
+
+    const [header, ...body] = effectiveRows
+    const filteredBody = body.filter((row) => {
+      const rawCampaign = row[mapping.campaignName] ?? ''
+      const normCampaign = normalizeCampaignNameForMatch(rawCampaign)
+      if (!normCampaign) return true
+      return !excludedCampaigns.has(normCampaign)
+    })
+    return [header, ...filteredBody]
+  }, [effectiveRows, mapping.campaignName, referenceExactData?.campaignNamesInReference])
+
   useEffect(() => {
     const csvEmpty = rows.length === 0
     const manualNonEmpty = manualKeywordSegments.length > 0
@@ -177,14 +194,16 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
 
   const missingRequired = useMemo(() => getMissingRequired(mapping), [mapping])
   const hasAnySourceRows = effectiveRows.length > (hasHeader ? 1 : 0)
-  const canAnalyze = hasAnySourceRows && missingRequired.length === 0
+  const hasAnySourceRowsAfterReferenceFilter =
+    effectiveRowsWithoutReferenceCampaigns.length > (hasHeader ? 1 : 0)
+  const canAnalyze = hasAnySourceRowsAfterReferenceFilter && missingRequired.length === 0
 
   const aggregated = useMemo(() => {
-    if (!hasAnySourceRows || missingRequired.length > 0) return []
+    if (effectiveRowsWithoutReferenceCampaigns.length <= (hasHeader ? 1 : 0) || missingRequired.length > 0) return []
     return aggregateByTerm
-      ? aggregateByNormalizedTerm(effectiveRows, mapping, hasHeader)
-      : oneRowPerCsvRow(effectiveRows, mapping, hasHeader)
-  }, [effectiveRows, mapping, hasHeader, missingRequired.length, aggregateByTerm, hasAnySourceRows])
+      ? aggregateByNormalizedTerm(effectiveRowsWithoutReferenceCampaigns, mapping, hasHeader)
+      : oneRowPerCsvRow(effectiveRowsWithoutReferenceCampaigns, mapping, hasHeader)
+  }, [effectiveRowsWithoutReferenceCampaigns, mapping, hasHeader, missingRequired.length, aggregateByTerm])
 
   const scored = useMemo(() => runScoring(aggregated, criteria, profiles), [aggregated, criteria, profiles])
   const promoteList = useMemo(() => getPromoteList(scored), [scored])
