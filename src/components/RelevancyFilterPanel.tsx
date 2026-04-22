@@ -223,6 +223,7 @@ function RelevancyResultsTable({
         <thead>
           <tr>
             <th>Keyword to negate</th>
+            <th>Matched phrase</th>
             <th>Why negate</th>
           </tr>
         </thead>
@@ -230,6 +231,7 @@ function RelevancyResultsTable({
           {results.map((r, i) => (
             <tr key={`${r.originalTerm}-${i}`} className="row-flagged">
               <td className="results-table__keyword">{r.originalTerm}</td>
+              <td>{r.matchedExcludedIncludePhrases.join(', ') || '—'}</td>
               <td>{r.reason}</td>
             </tr>
           ))}

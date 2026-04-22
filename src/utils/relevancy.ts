@@ -4,12 +4,14 @@ import { normalize, phraseMatchesSmart } from './normalize'
 function topicMatchesTerm(
   normalizedTerm: string,
   topic: Topic
-): { include: boolean; exclude: boolean } {
+): { include: boolean; includePhrase: string | null; exclude: boolean } {
   let include = false
+  let includePhrase: string | null = null
   for (const p of topic.includePhrases) {
     const np = normalize(p)
     if (np && phraseMatchesSmart(normalizedTerm, np)) {
       include = true
+      includePhrase = p
       break
     }
   }
@@ -21,7 +23,7 @@ function topicMatchesTerm(
       break
     }
   }
-  return { include, exclude }
+  return { include, includePhrase, exclude }
 }
 
 export function runRelevancyFilter(
@@ -33,14 +35,18 @@ export function runRelevancyFilter(
   for (const { original, normalized } of campaignTerms) {
     const matchedAllowed: string[] = []
     const matchedExcluded: string[] = []
+    const matchedExcludedIncludePhrases: string[] = []
 
     for (const topic of profile.allowedTopics) {
       const { include, exclude } = topicMatchesTerm(normalized, topic)
       if (include && !exclude) matchedAllowed.push(topic.name)
     }
     for (const topic of profile.excludedTopics) {
-      const { include } = topicMatchesTerm(normalized, topic)
-      if (include) matchedExcluded.push(topic.name)
+      const { include, includePhrase } = topicMatchesTerm(normalized, topic)
+      if (include) {
+        matchedExcluded.push(topic.name)
+        if (includePhrase) matchedExcludedIncludePhrases.push(includePhrase)
+      }
     }
 
     // Only negate when the term matches an EXCLUDED topic (e.g. drinking water, pool).
@@ -59,6 +65,7 @@ export function runRelevancyFilter(
       status,
       matchedAllowedTopics: matchedAllowed,
       matchedExcludedTopics: matchedExcluded,
+      matchedExcludedIncludePhrases: Array.from(new Set(matchedExcludedIncludePhrases)),
       reason: reason || '—',
     })
   }
