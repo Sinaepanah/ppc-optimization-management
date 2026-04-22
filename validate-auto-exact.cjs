@@ -223,7 +223,7 @@ const promoteExcludingExact = promoteList.filter((r) => !referenceExact.has(r.no
 
 console.log('=== Auto→Exact Validation Report ===\n')
 console.log('Criteria (default): minOrders=2, minSales=50, maxACoS=35%')
-console.log('Aggregation: one row per CSV row (aggregateByTerm=false)\n')
+console.log('Aggregation: one row per CSV row (per-file rows, not summed by search term)\n')
 
 console.log('--- PROMOTE TO EXACT (qualifying terms) ---')
 console.log(`Total: ${promoteList.length} rows`)

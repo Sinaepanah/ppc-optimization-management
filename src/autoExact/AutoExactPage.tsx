@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { TopicProfile } from '../types'
-import { aggregateByNormalizedTerm, oneRowPerCsvRow } from './utils/aggregation'
+import {
+  aggregateByNormalizedTerm,
+  oneRowPerCsvRow,
+  type SearchTermAggregateScope,
+} from './utils/aggregation'
 import { getHeaderSuggestions } from './utils/csvHelpers'
 import { getPromoteList, getReviewQueue, runScoring } from './utils/scoring'
 import type { ColumnMapping, PromotionCriteria, ScoredTerm } from './types'
@@ -111,6 +115,7 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   const [criteria, setCriteria] = useState<PromotionCriteria>(DEFAULT_CRITERIA)
   const [wrapInBrackets, setWrapInBrackets] = useState(false)
   const [aggregateByTerm, setAggregateByTerm] = useState(false)
+  const [aggregateScope, setAggregateScope] = useState<SearchTermAggregateScope>('across_campaigns')
   const [selectedPromoteIndices, setSelectedPromoteIndices] = useState<Set<number>>(new Set())
   const [intent, setIntent] = useState('')
   const [asin, setAsin] = useState('')
@@ -135,6 +140,7 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
       setSourceCsvNames(meta?.sourceFileNames ?? [])
       if (meta?.sourceFileNames && meta.sourceFileNames.length > 1) {
         setAggregateByTerm(true)
+        setAggregateScope('across_campaigns')
       }
       setAnalyzed(false)
     },
@@ -194,6 +200,16 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
     setSelectedManualNotInRefIndices(new Set())
   }, [manualKeywordText])
 
+  useEffect(() => {
+    if (aggregateByTerm && aggregateScope === 'within_campaign' && mapping.campaignName < 0) {
+      setAggregateScope('across_campaigns')
+    }
+  }, [aggregateByTerm, aggregateScope, mapping.campaignName])
+
+  useEffect(() => {
+    setAnalyzed(false)
+  }, [aggregateByTerm, aggregateScope])
+
   const missingRequired = useMemo(() => getMissingRequired(mapping), [mapping])
   const hasAnySourceRows = effectiveRows.length > (hasHeader ? 1 : 0)
   const hasAnySourceRowsAfterReferenceFilter =
@@ -203,9 +219,21 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   const aggregated = useMemo(() => {
     if (effectiveRowsWithoutReferenceCampaigns.length <= (hasHeader ? 1 : 0) || missingRequired.length > 0) return []
     return aggregateByTerm
-      ? aggregateByNormalizedTerm(effectiveRowsWithoutReferenceCampaigns, mapping, hasHeader)
+      ? aggregateByNormalizedTerm(
+          effectiveRowsWithoutReferenceCampaigns,
+          mapping,
+          hasHeader,
+          aggregateScope
+        )
       : oneRowPerCsvRow(effectiveRowsWithoutReferenceCampaigns, mapping, hasHeader)
-  }, [effectiveRowsWithoutReferenceCampaigns, mapping, hasHeader, missingRequired.length, aggregateByTerm])
+  }, [
+    effectiveRowsWithoutReferenceCampaigns,
+    mapping,
+    hasHeader,
+    missingRequired.length,
+    aggregateByTerm,
+    aggregateScope,
+  ])
 
   const scored = useMemo(() => runScoring(aggregated, criteria, profiles), [aggregated, criteria, profiles])
   const promoteList = useMemo(() => getPromoteList(scored), [scored])
@@ -294,16 +322,52 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
           <CriteriaPanel criteria={criteria} onCriteriaChange={setCriteria} />
 
           <div className="auto-exact-aggregate-option">
-            <label>
+            <label className="auto-exact-aggregate-main">
               <input
                 type="checkbox"
                 checked={aggregateByTerm}
                 onChange={(e) => setAggregateByTerm(e.target.checked)}
               />
-              Aggregate by search term (sum metrics when same term appears in multiple rows)
+              Aggregate by search term (sum metrics when the same term appears in multiple rows)
             </label>
+            {aggregateByTerm && (
+              <fieldset className="auto-exact-aggregate-scope">
+                <legend className="sr-only">How to aggregate by search term</legend>
+                <div className="auto-exact-aggregate-scope-options">
+                  <label className="auto-exact-aggregate-radio">
+                    <input
+                      type="radio"
+                      name="auto-exact-aggregate-scope"
+                      value="across_campaigns"
+                      checked={aggregateScope === 'across_campaigns'}
+                      onChange={() => setAggregateScope('across_campaigns')}
+                    />
+                    Across all campaigns (one row per search term, totals combined)
+                  </label>
+                  <label
+                    className={`auto-exact-aggregate-radio${mapping.campaignName < 0 ? ' auto-exact-aggregate-radio--disabled' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="auto-exact-aggregate-scope"
+                      value="within_campaign"
+                      checked={aggregateScope === 'within_campaign'}
+                      disabled={mapping.campaignName < 0}
+                      onChange={() => setAggregateScope('within_campaign')}
+                    />
+                    Within each campaign (same term in different campaigns stays on separate rows)
+                  </label>
+                </div>
+                {mapping.campaignName < 0 && (
+                  <p className="auto-exact-aggregate-scope-hint muted">
+                    Map <strong>Campaign Name</strong> in column mapping to use within-campaign aggregation.
+                  </p>
+                )}
+              </fieldset>
+            )}
             <p className="auto-exact-aggregate-hint">
-              Default: one row per CSV row so numbers match your file. Turn on to combine rows with the same search term.
+              Default: one row per CSV row so numbers match your file. Turn on aggregation, then choose whether to sum
+              the term globally or separately per campaign.
             </p>
           </div>
           <div className="auto-exact-analyze">

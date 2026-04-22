@@ -1,6 +1,12 @@
 import { normalize } from '../../utils/normalize'
 import type { AggregatedTerm, ColumnMapping } from '../types'
 import { parseRow, rowToRaw } from './csvHelpers'
+import { normalizeCampaignNameForMatch } from './referenceExact'
+
+/** How to combine rows that share the same normalized search term. */
+export type SearchTermAggregateScope = 'across_campaigns' | 'within_campaign'
+
+const BUCKET_SEP = '\u0001' as const
 
 /** Normalize match type for display (auto, broad, phrase) */
 function normalizeMatchType(mt: string | null): string | null {
@@ -12,10 +18,25 @@ function normalizeMatchType(mt: string | null): string | null {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : null
 }
 
+function aggregateBucketKey(
+  norm: string,
+  scope: SearchTermAggregateScope,
+  mapping: ColumnMapping,
+  parsedCampaignName: string | null
+): string {
+  if (scope !== 'within_campaign') return norm
+  const cn =
+    mapping.campaignName >= 0 && parsedCampaignName
+      ? normalizeCampaignNameForMatch(parsedCampaignName)
+      : ''
+  return `${norm}${BUCKET_SEP}${cn || '__none__'}`
+}
+
 export function aggregateByNormalizedTerm(
   rows: string[][],
   mapping: ColumnMapping,
-  skipHeaderRow: boolean = true
+  skipHeaderRow: boolean = true,
+  scope: SearchTermAggregateScope = 'across_campaigns'
 ): AggregatedTerm[] {
   const start = skipHeaderRow ? 1 : 0
   const map = new Map<string, AggregatedTerm>()
@@ -32,6 +53,8 @@ export function aggregateByNormalizedTerm(
     const norm = normalize(parsed.searchTerm)
     if (!norm) continue
 
+    const bucketKey = aggregateBucketKey(norm, scope, mapping, parsed.campaignName)
+
     const suggestedCpc =
       parsed.cpc != null && parsed.cpc > 0
         ? parsed.cpc
@@ -41,17 +64,17 @@ export function aggregateByNormalizedTerm(
     const campaignName = parsed.campaignName ?? null
     const matchType = normalizeMatchType(parsed.matchType)
 
-    if (!spendByMatchType.has(norm)) spendByMatchType.set(norm, new Map())
-    const mtMap = spendByMatchType.get(norm)!
+    if (!spendByMatchType.has(bucketKey)) spendByMatchType.set(bucketKey, new Map())
+    const mtMap = spendByMatchType.get(bucketKey)!
     const key = matchType ?? '_unknown'
     mtMap.set(key, (mtMap.get(key) ?? 0) + parsed.spend)
-    if (!campaignsByTerm.has(norm)) campaignsByTerm.set(norm, new Set<string>())
-    if (campaignName) campaignsByTerm.get(norm)!.add(campaignName)
+    if (!campaignsByTerm.has(bucketKey)) campaignsByTerm.set(bucketKey, new Set<string>())
+    if (campaignName) campaignsByTerm.get(bucketKey)!.add(campaignName)
 
-    const existing = map.get(norm)
+    const existing = map.get(bucketKey)
     if (parsed.roas != null && parsed.spend > 0) {
-      roasNumByTerm.set(norm, (roasNumByTerm.get(norm) ?? 0) + parsed.roas * parsed.spend)
-      roasDenByTerm.set(norm, (roasDenByTerm.get(norm) ?? 0) + parsed.spend)
+      roasNumByTerm.set(bucketKey, (roasNumByTerm.get(bucketKey) ?? 0) + parsed.roas * parsed.spend)
+      roasDenByTerm.set(bucketKey, (roasDenByTerm.get(bucketKey) ?? 0) + parsed.spend)
     }
     if (existing) {
       existing.spendSum += parsed.spend
@@ -62,7 +85,7 @@ export function aggregateByNormalizedTerm(
       existing.rowCount += 1
       existing.suggestedCpc = existing.clicksSum > 0 ? existing.spendSum / existing.clicksSum : null
     } else {
-      map.set(norm, {
+      map.set(bucketKey, {
         normalizedTerm: norm,
         originalTerm: parsed.searchTerm,
         spendSum: parsed.spend,
@@ -80,8 +103,8 @@ export function aggregateByNormalizedTerm(
     }
   }
 
-  return Array.from(map.values()).map((agg) => {
-    const mtMap = spendByMatchType.get(agg.normalizedTerm)
+  return Array.from(map.entries()).map(([bucketKey, agg]) => {
+    const mtMap = spendByMatchType.get(bucketKey)
     if (mtMap && mtMap.size > 0) {
       let maxSpend = 0
       let best: string | null = null
@@ -93,11 +116,11 @@ export function aggregateByNormalizedTerm(
       }
       agg.primaryMatchType = best ?? agg.primaryMatchType ?? null
     }
-    agg.campaignNames = Array.from(campaignsByTerm.get(agg.normalizedTerm) ?? [])
+    agg.campaignNames = Array.from(campaignsByTerm.get(bucketKey) ?? [])
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
     if (!agg.campaignName && agg.campaignNames.length > 0) agg.campaignName = agg.campaignNames[0] ?? null
-    const rd = roasDenByTerm.get(agg.normalizedTerm) ?? 0
-    const rn = roasNumByTerm.get(agg.normalizedTerm) ?? 0
+    const rd = roasDenByTerm.get(bucketKey) ?? 0
+    const rn = roasNumByTerm.get(bucketKey) ?? 0
     agg.roas = rd > 0 ? rn / rd : null
     return agg
   })
