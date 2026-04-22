@@ -39,7 +39,8 @@ export function getPerformanceLabel(
   }
 
   if (sourceWins > exactWins) {
-    const matchLabel = primaryMatchType || 'Source'
+    const raw = (primaryMatchType || 'Source').trim()
+    const matchLabel = raw === '-' ? 'Exact' : raw || 'Source'
     return `Better in ${matchLabel}`
   }
   if (exactWins > sourceWins) {
