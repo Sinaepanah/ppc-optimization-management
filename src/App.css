@@ -1961,7 +1961,8 @@ input[type="file"]::file-selector-button:hover {
   margin-bottom: 0.25rem;
 }
 
-.auto-exact-column-row select {
+.auto-exact-column-row select,
+.auto-exact-column-row input[type='text'] {
   width: 100%;
   padding: 0.5rem 0.75rem;
   border: 2px solid var(--color-border-strong);

@@ -6,6 +6,10 @@ interface ColumnMapperProps {
   mapping: ColumnMapping
   onMappingChange: (m: ColumnMapping) => void
   missingRequired: string[]
+  includePhrase: string
+  excludePhrase: string
+  onIncludePhraseChange: (value: string) => void
+  onExcludePhraseChange: (value: string) => void
 }
 
 const FIELDS: { key: keyof ColumnMapping; label: string; required: boolean }[] = [
@@ -23,7 +27,16 @@ const FIELDS: { key: keyof ColumnMapping; label: string; required: boolean }[] =
   { key: 'targeting', label: 'Targeting', required: false },
 ]
 
-export function ColumnMapper({ rows, mapping, onMappingChange, missingRequired }: ColumnMapperProps) {
+export function ColumnMapper({
+  rows,
+  mapping,
+  onMappingChange,
+  missingRequired,
+  includePhrase,
+  excludePhrase,
+  onIncludePhraseChange,
+  onExcludePhraseChange,
+}: ColumnMapperProps) {
   const options = getColumnOptions(rows)
   const opts = [{ value: -1, label: '— Not mapped —' }, ...options.map((label, i) => ({ value: i, label }))]
 
@@ -59,6 +72,26 @@ export function ColumnMapper({ rows, mapping, onMappingChange, missingRequired }
             </select>
           </div>
         ))}
+        <div className="auto-exact-column-row">
+          <label htmlFor="auto-exact-include-phrase">Include phrase (optional)</label>
+          <input
+            id="auto-exact-include-phrase"
+            type="text"
+            value={includePhrase}
+            onChange={(e) => onIncludePhraseChange(e.target.value)}
+            placeholder="Only show terms containing this phrase"
+          />
+        </div>
+        <div className="auto-exact-column-row">
+          <label htmlFor="auto-exact-exclude-phrase">Exclude phrase (optional)</label>
+          <input
+            id="auto-exact-exclude-phrase"
+            type="text"
+            value={excludePhrase}
+            onChange={(e) => onExcludePhraseChange(e.target.value)}
+            placeholder="Hide terms containing this phrase"
+          />
+        </div>
       </div>
     </section>
   )

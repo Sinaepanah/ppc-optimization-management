@@ -125,6 +125,8 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   const [analyzed, setAnalyzed] = useState(false)
   const [sourceCsvNames, setSourceCsvNames] = useState<string[]>([])
   const [manualKeywordText, setManualKeywordText] = useState('')
+  const [includePhrase, setIncludePhrase] = useState('')
+  const [excludePhrase, setExcludePhrase] = useState('')
   const [selectedManualNotInRefIndices, setSelectedManualNotInRefIndices] = useState<Set<number>>(new Set())
   const prevHadCsvRows = useRef(false)
   const prevManualNonEmpty = useRef(false)
@@ -210,6 +212,10 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
     setAnalyzed(false)
   }, [aggregateByTerm, aggregateScope])
 
+  useEffect(() => {
+    setAnalyzed(false)
+  }, [includePhrase, excludePhrase])
+
   const missingRequired = useMemo(() => getMissingRequired(mapping), [mapping])
   const hasAnySourceRows = effectiveRows.length > (hasHeader ? 1 : 0)
   const hasAnySourceRowsAfterReferenceFilter =
@@ -236,8 +242,19 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   ])
 
   const scored = useMemo(() => runScoring(aggregated, criteria, profiles), [aggregated, criteria, profiles])
-  const promoteList = useMemo(() => getPromoteList(scored), [scored])
-  const reviewQueue = useMemo(() => getReviewQueue(scored), [scored])
+  const filteredScored = useMemo(() => {
+    const includeNorm = normalize(includePhrase)
+    const excludeNorm = normalize(excludePhrase)
+    if (!includeNorm && !excludeNorm) return scored
+    return scored.filter((row) => {
+      const t = row.normalizedTerm
+      if (includeNorm && !t.includes(includeNorm)) return false
+      if (excludeNorm && t.includes(excludeNorm)) return false
+      return true
+    })
+  }, [scored, includePhrase, excludePhrase])
+  const promoteList = useMemo(() => getPromoteList(filteredScored), [filteredScored])
+  const reviewQueue = useMemo(() => getReviewQueue(filteredScored), [filteredScored])
 
   const referenceNormalizedTerms = referenceExactData?.normalizedTermsInReference ?? new Set<string>()
   const referenceTargetCount = referenceExactData?.keywords.size ?? 0
@@ -318,6 +335,10 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
             mapping={mapping}
             onMappingChange={setMapping}
             missingRequired={missingRequired}
+            includePhrase={includePhrase}
+            excludePhrase={excludePhrase}
+            onIncludePhraseChange={setIncludePhrase}
+            onExcludePhraseChange={setExcludePhrase}
           />
           <CriteriaPanel criteria={criteria} onCriteriaChange={setCriteria} />
 
