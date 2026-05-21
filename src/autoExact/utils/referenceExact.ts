@@ -1,5 +1,5 @@
 import { normalize } from '../../utils/normalize'
-import { parseCSV } from '../../utils/csv'
+import { detectSpendColumn, parseCSV } from '../../utils/csv'
 
 /**
  * Extract the KEYWORD from a campaign title in format:
@@ -163,7 +163,7 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
   const headers = rows[0].map((h) => (h ?? '').trim())
   const campaignCol = findCampaignNameColumn(headers)
   const targetingCol = findColumn(headers, 'targeting', 'keyword')
-  const spendCol = findColumn(headers, 'spend', 'cost', 'total')
+  const spendCol = detectSpendColumn(headers)
   const salesCol = findColumn(headers, 'sales', 'attributed')
   const ordersCol = findColumn(headers, 'orders', 'purchases', 'unit')
   const clicksCol = findColumn(headers, 'clicks')
