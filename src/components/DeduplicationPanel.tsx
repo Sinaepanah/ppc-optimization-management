@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, type ReactNode } from 'react'
+import { useState, useCallback, useMemo, useEffect, type ReactNode } from 'react'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import type { Campaign, DuplicateResult } from '../types'
 import {
@@ -42,6 +42,17 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
   const [singleSheetClicksMode, setSingleSheetClicksMode] = useState<ComparatorMode>('min')
   const [singleSheetImprMode, setSingleSheetImprMode] = useState<ComparatorMode>('min')
   const [singleSheetSalesMode, setSingleSheetSalesMode] = useState<ComparatorMode>('min')
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const validIds = new Set(campaigns.map((c) => c.id))
+      const next = new Set([...prev].filter((id) => validIds.has(id)))
+      if (campaigns.length === 1) {
+        next.add(campaigns[0]!.id)
+      }
+      return next
+    })
+  }, [campaigns])
 
   const toggleCampaign = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -99,26 +110,34 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
   }, [dedupSources])
 
   const isWithinFileMode = useMemo(() => {
-    if (dedupSources.length === 0) return false
-    if (dedupMode === 'batches') return dedupBatchCount === 1
-    return dedupSources.length === 1
-  }, [dedupSources.length, dedupMode, dedupBatchCount])
+    if (manualKeywordCampaign || selectedCampaigns.length === 0) return false
+    if (dedupMode === 'batches') {
+      const keys = new Set<string>()
+      for (const c of selectedCampaigns) {
+        keys.add(c.bundleName?.trim() || `__ungrouped:${c.id}`)
+      }
+      return keys.size === 1
+    }
+    return selectedCampaigns.length === 1
+  }, [selectedCampaigns, manualKeywordCampaign, dedupMode])
+
+  const withinFileSources = selectedCampaigns
 
   const duplicates = useMemo(() => {
-    if (dedupSources.length === 0) return []
     if (isWithinFileMode) {
-      return findWithinFileDuplicates(dedupSources, minCampaigns)
+      return findWithinFileDuplicates(withinFileSources, minCampaigns)
     }
+    if (dedupSources.length === 0) return []
     if (dedupSources.length < 2) return []
     if (dedupMode === 'batches') {
       if (dedupBatchCount < 2) return []
       return findCrossBatchDuplicates(dedupSources, minCampaigns)
     }
     return findCrossCampaignDuplicates(dedupSources, minCampaigns)
-  }, [dedupSources, minCampaigns, dedupMode, dedupBatchCount, isWithinFileMode])
+  }, [dedupSources, minCampaigns, dedupMode, dedupBatchCount, isWithinFileMode, withinFileSources])
 
   const needsReimportForWithinFile =
-    isWithinFileMode && dedupSources.length > 0 && !campaignsHaveMatchBreakdown(dedupSources)
+    isWithinFileMode && withinFileSources.length > 0 && !campaignsHaveMatchBreakdown(withinFileSources)
 
   const duplicateTerms = useMemo(() => duplicates.map((d) => d.normalizedTerm), [duplicates])
 
@@ -293,6 +312,12 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
             )}
           </div>
 
+          {campaigns.length > 0 && selectedIds.size === 0 && (
+            <p className="muted dedup-batch-hint">
+              Select one or more campaigns above. With a single file selected, within-file duplicate detection runs automatically.
+            </p>
+          )}
+
           {needsReimportForWithinFile && (
             <p className="warning dedup-batch-hint">
               Re-import this CSV in Campaign Input to enable keyword-level duplicate detection within a single file.
@@ -332,6 +357,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
           )}
 
           {dedupSources.length >= (isWithinFileMode ? 1 : 2) &&
+            selectedIds.size > 0 &&
             duplicates.length === 0 &&
             !needsReimportForWithinFile &&
             !(dedupMode === 'batches' && !isWithinFileMode && dedupBatchCount < 2) && (
