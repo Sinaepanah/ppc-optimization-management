@@ -1,3 +1,10 @@
+export interface TermMatchMetrics {
+  clicks: number
+  purchases: number
+  spend: number
+  attributedSales: number
+}
+
 export interface Campaign {
   id: string
   name: string
@@ -13,6 +20,8 @@ export interface Campaign {
   normalizedToSpend: Map<string, number>
   /** Sum of attributed sales revenue (currency) per normalized term when present; used with spend for ACOS. */
   normalizedToAttributedSales: Map<string, number>
+  /** Per search term → matched keyword (Keywords column) → metrics. Used for within-file duplicate detection. */
+  termMatchBreakdown?: Map<string, Map<string, TermMatchMetrics>>
 }
 
 export interface Topic {

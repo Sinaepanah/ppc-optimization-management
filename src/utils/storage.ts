@@ -1,4 +1,4 @@
-import type { Campaign, TopicProfile } from '../types'
+import type { Campaign, TermMatchMetrics, TopicProfile } from '../types'
 
 const CAMPAIGNS_KEY = 'ppc-analysis-campaigns'
 const PROFILES_KEY = 'ppc-analysis-profiles'
@@ -27,6 +27,25 @@ function replacer(_key: string, value: unknown): unknown {
   return value
 }
 
+function restoreMap<V>(raw: unknown): Map<string, V> | undefined {
+  if (raw instanceof Map) return raw as Map<string, V>
+  if (raw && typeof raw === 'object' && 'data' in raw) {
+    return new Map((raw as { data: [string, V][] }).data || [])
+  }
+  return undefined
+}
+
+function restoreTermMatchBreakdown(raw: unknown): Map<string, Map<string, TermMatchMetrics>> | undefined {
+  const outer = restoreMap<unknown>(raw)
+  if (!outer?.size) return undefined
+  const result = new Map<string, Map<string, TermMatchMetrics>>()
+  for (const [term, innerRaw] of outer) {
+    const inner = restoreMap<TermMatchMetrics>(innerRaw)
+    if (inner?.size) result.set(term, inner)
+  }
+  return result.size > 0 ? result : undefined
+}
+
 function ensureMaps(campaigns: Campaign[]): Campaign[] {
   return (campaigns || []).map((c) => {
     const normalizedToOriginal =
@@ -46,7 +65,72 @@ function ensureMaps(campaigns: Campaign[]): Campaign[] {
     for (const k of normalizedToOriginal.keys()) {
       if (!normalizedToClicks.has(k)) normalizedToClicks.set(k, 0)
     }
-    return { ...c, normalizedToOriginal, normalizedToClicks }
+    let normalizedToPurchases: Map<string, number>
+    if (c.normalizedToPurchases instanceof Map) {
+      normalizedToPurchases = c.normalizedToPurchases
+    } else if (
+      c.normalizedToPurchases &&
+      typeof c.normalizedToPurchases === 'object' &&
+      'data' in c.normalizedToPurchases
+    ) {
+      normalizedToPurchases = new Map(
+        (c.normalizedToPurchases as unknown as { data: [string, number][] }).data || []
+      )
+    } else {
+      normalizedToPurchases = new Map()
+    }
+    for (const k of normalizedToOriginal.keys()) {
+      if (!normalizedToPurchases.has(k)) normalizedToPurchases.set(k, 0)
+    }
+    let normalizedToSpend: Map<string, number>
+    if (c.normalizedToSpend instanceof Map) {
+      normalizedToSpend = c.normalizedToSpend
+    } else if (
+      c.normalizedToSpend &&
+      typeof c.normalizedToSpend === 'object' &&
+      'data' in c.normalizedToSpend
+    ) {
+      normalizedToSpend = new Map(
+        (c.normalizedToSpend as unknown as { data: [string, number][] }).data || []
+      )
+    } else {
+      normalizedToSpend = new Map()
+    }
+    for (const k of normalizedToOriginal.keys()) {
+      if (!normalizedToSpend.has(k)) normalizedToSpend.set(k, 0)
+    }
+    let normalizedToAttributedSales: Map<string, number>
+    if (c.normalizedToAttributedSales instanceof Map) {
+      normalizedToAttributedSales = c.normalizedToAttributedSales
+    } else if (
+      c.normalizedToAttributedSales &&
+      typeof c.normalizedToAttributedSales === 'object' &&
+      'data' in c.normalizedToAttributedSales
+    ) {
+      normalizedToAttributedSales = new Map(
+        (c.normalizedToAttributedSales as unknown as { data: [string, number][] }).data || []
+      )
+    } else {
+      normalizedToAttributedSales = new Map()
+    }
+    for (const k of normalizedToOriginal.keys()) {
+      if (!normalizedToAttributedSales.has(k)) normalizedToAttributedSales.set(k, 0)
+    }
+    const bundleName =
+      typeof c.bundleName === 'string' && c.bundleName.trim().length > 0 ? c.bundleName.trim() : undefined
+    const termMatchBreakdown = restoreTermMatchBreakdown(c.termMatchBreakdown)
+    return {
+      id: c.id,
+      name: c.name,
+      ...(bundleName != null ? { bundleName } : {}),
+      terms: c.terms,
+      normalizedToOriginal,
+      normalizedToClicks,
+      normalizedToPurchases,
+      normalizedToSpend,
+      normalizedToAttributedSales,
+      ...(termMatchBreakdown != null ? { termMatchBreakdown } : {}),
+    }
   })
 }
 

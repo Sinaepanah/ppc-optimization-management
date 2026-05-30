@@ -1,4 +1,4 @@
-import type { Campaign, DuplicateResult } from '../types'
+import type { Campaign, DuplicateResult, TermMatchMetrics } from '../types'
 import { normalize } from './normalize'
 import {
   detectDelimiter,
@@ -241,6 +241,105 @@ export function findCrossBatchDuplicates(campaigns: Campaign[], minBatches: numb
   return results
 }
 
+function detectKeywordsColumn(headers: string[]): number {
+  const cells = headers.map((h) => normalizeHeaderCell(h))
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (h === 'keywords' || h === 'keyword') return i
+  }
+  return -1
+}
+
+function emptyTermMatchMetrics(): TermMatchMetrics {
+  return { clicks: 0, purchases: 0, spend: 0, attributedSales: 0 }
+}
+
+function addTermMatchMetrics(a: TermMatchMetrics, b: TermMatchMetrics): TermMatchMetrics {
+  return {
+    clicks: a.clicks + b.clicks,
+    purchases: a.purchases + b.purchases,
+    spend: a.spend + b.spend,
+    attributedSales: a.attributedSales + b.attributedSales,
+  }
+}
+
+/** Merge keyword-level breakdowns across one or more campaigns (e.g. files in the same batch). */
+export function mergeTermMatchBreakdowns(campaigns: Campaign[]): Map<string, Map<string, TermMatchMetrics>> {
+  const merged = new Map<string, Map<string, TermMatchMetrics>>()
+  for (const camp of campaigns) {
+    if (!camp.termMatchBreakdown?.size) continue
+    for (const [term, byKeyword] of camp.termMatchBreakdown) {
+      if (!merged.has(term)) merged.set(term, new Map())
+      const dest = merged.get(term)!
+      for (const [kw, metrics] of byKeyword) {
+        dest.set(kw, addTermMatchMetrics(dest.get(kw) ?? emptyTermMatchMetrics(), metrics))
+      }
+    }
+  }
+  return merged
+}
+
+/**
+ * Within a single file or batch: find customer search terms matched by multiple distinct Keywords values.
+ * Returns the same DuplicateResult shape; "campaigns" holds matched keyword labels.
+ */
+export function findWithinFileDuplicates(campaigns: Campaign[], minMatches: number = 2): DuplicateResult[] {
+  const merged = mergeTermMatchBreakdowns(campaigns)
+  const results: DuplicateResult[] = []
+
+  for (const [normalizedTerm, byKeyword] of merged) {
+    const keywords = Array.from(byKeyword.keys()).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' })
+    )
+    if (keywords.length < minMatches) continue
+
+    const clicksByCampaign = new Map<string, number>()
+    const purchasesByCampaign = new Map<string, number>()
+    const spendByCampaign = new Map<string, number>()
+    const attributedSalesByCampaign = new Map<string, number>()
+    const acosPctByCampaign = new Map<string, number | null>()
+
+    let totalClicks = 0
+    let totalPurchases = 0
+    let totalSpend = 0
+    let totalAttributedSales = 0
+
+    for (const kw of keywords) {
+      const m = byKeyword.get(kw)!
+      clicksByCampaign.set(kw, m.clicks)
+      purchasesByCampaign.set(kw, m.purchases)
+      spendByCampaign.set(kw, m.spend)
+      attributedSalesByCampaign.set(kw, m.attributedSales)
+      acosPctByCampaign.set(kw, acosPctFromSpendAndSales(m.spend, m.attributedSales))
+      totalClicks += m.clicks
+      totalPurchases += m.purchases
+      totalSpend += m.spend
+      totalAttributedSales += m.attributedSales
+    }
+
+    results.push({
+      normalizedTerm,
+      campaigns: keywords,
+      campaignCount: keywords.length,
+      clicksByCampaign,
+      totalClicks,
+      purchasesByCampaign,
+      totalPurchases,
+      spendByCampaign,
+      attributedSalesByCampaign,
+      acosPctByCampaign,
+      totalAcosPct: acosPctFromSpendAndSales(totalSpend, totalAttributedSales),
+    })
+  }
+
+  results.sort((a, b) => b.campaignCount - a.campaignCount || b.totalClicks - a.totalClicks)
+  return results
+}
+
+export function campaignsHaveMatchBreakdown(campaigns: Campaign[]): boolean {
+  return campaigns.some((c) => (c.termMatchBreakdown?.size ?? 0) > 0)
+}
+
 /** Build campaign term maps from raw term list (no CSV clicks). */
 export function buildCampaignFromTerms(rawTerms: string[]): Omit<Campaign, 'id' | 'name'> {
   const normalizedToOriginal = new Map<string, string>()
@@ -319,12 +418,14 @@ export function buildCampaignFromSearchTermRows(
   const purchasesCol = detectPurchasesColumn(headers)
   const spendCol = detectSpendColumn(headers)
   const attributedSalesCol = detectAttributedSalesColumn(headers)
+  const keywordsCol = detectKeywordsColumn(headers)
 
   const normalizedToOriginal = new Map<string, string>()
   const normalizedToClicks = new Map<string, number>()
   const normalizedToPurchases = new Map<string, number>()
   const normalizedToSpend = new Map<string, number>()
   const normalizedToAttributedSales = new Map<string, number>()
+  const termMatchBreakdown = new Map<string, Map<string, TermMatchMetrics>>()
 
   for (let i = headerRow + 1; i < rows.length; i++) {
     const row = rows[i]
@@ -347,6 +448,21 @@ export function buildCampaignFromSearchTermRows(
     normalizedToPurchases.set(n, (normalizedToPurchases.get(n) ?? 0) + purchases)
     normalizedToSpend.set(n, (normalizedToSpend.get(n) ?? 0) + spend)
     normalizedToAttributedSales.set(n, (normalizedToAttributedSales.get(n) ?? 0) + attrSales)
+
+    const rawKeyword =
+      keywordsCol >= 0 ? getCsvCell(padded, keywordsCol).trim() : ''
+    const keywordLabel = rawKeyword || '(no keyword)'
+    if (!termMatchBreakdown.has(n)) termMatchBreakdown.set(n, new Map())
+    const byKeyword = termMatchBreakdown.get(n)!
+    byKeyword.set(
+      keywordLabel,
+      addTermMatchMetrics(byKeyword.get(keywordLabel) ?? emptyTermMatchMetrics(), {
+        clicks,
+        purchases,
+        spend,
+        attributedSales: attrSales,
+      })
+    )
   }
 
   return {
@@ -356,6 +472,7 @@ export function buildCampaignFromSearchTermRows(
     normalizedToPurchases,
     normalizedToSpend,
     normalizedToAttributedSales,
+    termMatchBreakdown,
   }
 }
 

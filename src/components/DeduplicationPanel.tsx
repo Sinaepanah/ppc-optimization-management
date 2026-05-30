@@ -3,9 +3,11 @@ import { ChevronUp, ChevronDown } from 'lucide-react'
 import type { Campaign, DuplicateResult } from '../types'
 import {
   buildCampaignFromTerms,
+  campaignsHaveMatchBreakdown,
   findCrossBatchDuplicates,
   findCrossCampaignDuplicates,
   findSingleSheetDuplicatesByCampaign,
+  findWithinFileDuplicates,
   type SingleSheetDuplicateResult,
 } from '../utils/deduplication'
 import { LARGE_DATA_WARNING } from '../types'
@@ -96,14 +98,27 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     return keys.size
   }, [dedupSources])
 
+  const isWithinFileMode = useMemo(() => {
+    if (dedupSources.length === 0) return false
+    if (dedupMode === 'batches') return dedupBatchCount === 1
+    return dedupSources.length === 1
+  }, [dedupSources.length, dedupMode, dedupBatchCount])
+
   const duplicates = useMemo(() => {
+    if (dedupSources.length === 0) return []
+    if (isWithinFileMode) {
+      return findWithinFileDuplicates(dedupSources, minCampaigns)
+    }
     if (dedupSources.length < 2) return []
     if (dedupMode === 'batches') {
       if (dedupBatchCount < 2) return []
       return findCrossBatchDuplicates(dedupSources, minCampaigns)
     }
     return findCrossCampaignDuplicates(dedupSources, minCampaigns)
-  }, [dedupSources, minCampaigns, dedupMode, dedupBatchCount])
+  }, [dedupSources, minCampaigns, dedupMode, dedupBatchCount, isWithinFileMode])
+
+  const needsReimportForWithinFile =
+    isWithinFileMode && dedupSources.length > 0 && !campaignsHaveMatchBreakdown(dedupSources)
 
   const duplicateTerms = useMemo(() => duplicates.map((d) => d.normalizedTerm), [duplicates])
 
@@ -151,17 +166,21 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     const minOrders = Math.max(0, parseFloat(singleSheetMinOrders) || 0)
     const ordersRangeMin = singleSheetOrdersRangeMin.trim() === '' ? undefined : Math.max(0, parseFloat(singleSheetOrdersRangeMin) || 0)
     const ordersRangeMax = singleSheetOrdersRangeMax.trim() === '' ? undefined : Math.max(0, parseFloat(singleSheetOrdersRangeMax) || 0)
+    const hasOrdersRange = ordersRangeMin !== undefined || ordersRangeMax !== undefined
     return base.filter(
       (r) => {
-        const maxOrdersInAnyCampaign = Math.max(0, ...Array.from(r.purchasesByCampaign.values()))
+        const combinedOrders = r.totalPurchases
         const inOrdersRange =
-          (ordersRangeMin === undefined || maxOrdersInAnyCampaign >= ordersRangeMin) &&
-          (ordersRangeMax === undefined || maxOrdersInAnyCampaign <= ordersRangeMax)
+          (ordersRangeMin === undefined || combinedOrders >= ordersRangeMin) &&
+          (ordersRangeMax === undefined || combinedOrders <= ordersRangeMax)
+        const passesOrders =
+          hasOrdersRange
+            ? inOrdersRange
+            : cmp(combinedOrders, minOrders, singleSheetSalesMode)
         return (
         cmp(r.totalClicks, clicksThreshold, singleSheetClicksMode) &&
         cmp(r.totalImpressions, minImpr, singleSheetImprMode) &&
-        cmp(maxOrdersInAnyCampaign, minOrders, singleSheetSalesMode) &&
-        inOrdersRange
+        passesOrders
         )
       }
     )
@@ -182,7 +201,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     <section className="panel deduplication-panel">
       <h2>Cross-campaign deduplication</h2>
       <p className="panel-desc">
-        Select 2 or more campaigns to find search terms that appear in multiple campaigns. Use the results for Exact campaigns or Negative keywords. <strong>As is</strong> compares each uploaded file; <strong>Batch mode</strong> merges metrics per bundle name from Campaign Input (and single files as their own batch) and compares batches. Each duplicate term uses one block of rows, then a combined totals row with blended <strong>ACOS</strong> when your CSVs include spend and attributed sales. Excel exports often use UTF-16 or semicolon separators — both are supported. Re-import files after app updates so metrics refresh.
+        Select 1 or more campaigns to find search terms that repeat. With a <strong>single file</strong>, the app finds the same customer search term matched by multiple <strong>Keywords</strong> rows. With multiple files, use <strong>As is</strong> to compare each upload or <strong>Batch mode</strong> to merge metrics per bundle name from Campaign Input. Each duplicate term uses one block of rows, then a combined totals row with blended <strong>ACOS</strong> when your CSVs include spend and attributed sales. Excel exports often use UTF-16 or semicolon separators — both are supported. Re-import files after app updates so metrics refresh.
       </p>
 
       {campaigns.length === 0 ? (
@@ -253,7 +272,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
             </div>
             <div className="dedup-select__min">
               <label>
-                Show terms in at least{' '}
+                Show terms {isWithinFileMode ? 'matched by at least' : 'in at least'}{' '}
                 <input
                   type="number"
                   min={2}
@@ -261,7 +280,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                   value={minCampaigns}
                   onChange={(e) => setMinCampaigns(Math.max(2, parseInt(e.target.value, 10) || 2))}
                 />{' '}
-                {dedupMode === 'batches' ? 'batches' : 'campaigns'}
+                {isWithinFileMode ? 'keywords' : dedupMode === 'batches' ? 'batches' : 'campaigns'}
               </label>
             </div>
           </div>
@@ -274,7 +293,13 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
             )}
           </div>
 
-          {dedupMode === 'batches' && dedupSources.length >= 2 && dedupBatchCount < 2 && (
+          {needsReimportForWithinFile && (
+            <p className="warning dedup-batch-hint">
+              Re-import this CSV in Campaign Input to enable keyword-level duplicate detection within a single file.
+            </p>
+          )}
+
+          {dedupMode === 'batches' && !isWithinFileMode && dedupSources.length >= 2 && dedupBatchCount < 2 && (
             <p className="muted dedup-batch-hint">
               Batch mode needs selections from at least two batches (different bundle names, or mix bundled and unbundled files as separate batches).
             </p>
@@ -283,7 +308,11 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
           {duplicates.length > 0 && (
             <>
               <p className="dedup-summary">
-                <strong>{duplicates.length}</strong> terms appear in {minCampaigns}+ {dedupMode === 'batches' ? 'batches' : 'campaigns'}.
+                <strong>{duplicates.length}</strong> terms{' '}
+                {isWithinFileMode
+                  ? `matched by ${minCampaigns}+ keywords in this file`
+                  : `appear in ${minCampaigns}+ ${dedupMode === 'batches' ? 'batches' : 'campaigns'}`}
+                .
               </p>
               <ExportControls
                 items={duplicateTerms}
@@ -294,13 +323,18 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                 label="Export duplicates"
               />
               {copyFeedback && <span className="feedback">Copied to clipboard.</span>}
-              <DupResultsTable results={duplicates} batchMode={dedupMode === 'batches'} />
+              <DupResultsTable
+                results={duplicates}
+                batchMode={dedupMode === 'batches'}
+                withinFileMode={isWithinFileMode}
+              />
             </>
           )}
 
-          {dedupSources.length >= 2 &&
+          {dedupSources.length >= (isWithinFileMode ? 1 : 2) &&
             duplicates.length === 0 &&
-            !(dedupMode === 'batches' && dedupBatchCount < 2) && (
+            !needsReimportForWithinFile &&
+            !(dedupMode === 'batches' && !isWithinFileMode && dedupBatchCount < 2) && (
               <p className="muted">No duplicates found for the selected sources and minimum count.</p>
             )}
         </>
@@ -517,7 +551,15 @@ function compareDupRows(a: DuplicateResult, b: DuplicateResult, key: DupSortKey)
   return cmp
 }
 
-function DupResultsTable({ results, batchMode = false }: { results: DuplicateResult[]; batchMode?: boolean }) {
+function DupResultsTable({
+  results,
+  batchMode = false,
+  withinFileMode = false,
+}: {
+  results: DuplicateResult[]
+  batchMode?: boolean
+  withinFileMode?: boolean
+}) {
   const [filterQuery, setFilterQuery] = useState('')
   const [minClicksInput, setMinClicksInput] = useState('')
   const [minPurchInput, setMinPurchInput] = useState('')
@@ -687,7 +729,13 @@ function DupResultsTable({ results, batchMode = false }: { results: DuplicateRes
           id="dedup-table-filter-input"
           type="search"
           className="dedup-table-filter__input"
-          placeholder={batchMode ? 'Search by term or batch name…' : 'Search by term or source name…'}
+          placeholder={
+            withinFileMode
+              ? 'Search by term or matched keyword…'
+              : batchMode
+                ? 'Search by term or batch name…'
+                : 'Search by term or source name…'
+          }
           value={filterQuery}
           onChange={(e) => setFilterQuery(e.target.value)}
           autoComplete="off"
@@ -701,7 +749,9 @@ function DupResultsTable({ results, batchMode = false }: { results: DuplicateRes
       <div className="table-wrap table-wrap--sticky-header">
       <table className="results-table results-table--dedup-sort">
         <caption className="sr-only">
-          Duplicate search terms across {batchMode ? 'batches' : 'campaigns'}. Click a column heading to sort. Click again to reverse order.
+          Duplicate search terms across{' '}
+          {withinFileMode ? 'matched keywords in one file' : batchMode ? 'batches' : 'campaigns'}. Click a column
+          heading to sort. Click again to reverse order.
         </caption>
         <thead>
           <tr>
@@ -709,7 +759,9 @@ function DupResultsTable({ results, batchMode = false }: { results: DuplicateRes
             <SortTh colKey="count" align="right">
               Count
             </SortTh>
-            <SortTh colKey="campaigns">{batchMode ? 'Batch' : 'Source (file / campaign)'}</SortTh>
+            <SortTh colKey="campaigns">
+              {withinFileMode ? 'Matched keyword' : batchMode ? 'Batch' : 'Source (file / campaign)'}
+            </SortTh>
             <SortTh colKey="totalClicks" align="right">
               Clicks
             </SortTh>
@@ -754,7 +806,11 @@ function DupResultsTable({ results, batchMode = false }: { results: DuplicateRes
               })}
               <tr className="dedup-row-combined">
                 <td className="dedup-td-source dedup-td-combined-label">
-                  {batchMode ? 'All batches combined' : 'All sources combined'}
+                  {withinFileMode
+                    ? 'All keywords combined'
+                    : batchMode
+                      ? 'All batches combined'
+                      : 'All sources combined'}
                 </td>
                 <td className="dedup-td-num dedup-td-metric dedup-td-combined">{r.totalClicks.toLocaleString()}</td>
                 <td className="dedup-td-num dedup-td-metric dedup-td-combined">
@@ -776,7 +832,7 @@ function DupResultsTable({ results, batchMode = false }: { results: DuplicateRes
 function SingleSheetDrainTable({ results }: { results: SingleSheetDuplicateResult[] }) {
   return (
     <div className="table-wrap table-wrap--sticky-header">
-      <table className="results-table results-table--dedup-sort">
+      <table className="results-table results-table--dedup-sort results-table--single-sheet">
         <thead>
           <tr>
             <th scope="col">Keyword</th>
