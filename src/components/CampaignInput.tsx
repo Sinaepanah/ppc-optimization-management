@@ -1,7 +1,7 @@
-import { useState, useCallback, useMemo, type FC } from 'react'
+import { useState, useCallback, type FC } from 'react'
 import type { Campaign } from '../types'
 import { parseCSV, detectSearchTermColumn, findSearchTermReportHeaderRow } from '../utils/csv'
-import { readEncodedTextFile, TABULAR_UPLOAD_ACCEPT } from '../utils/readEncodedTextFile'
+import { readEncodedTextFile } from '../utils/readEncodedTextFile'
 import { buildCampaignFromSearchTermRows } from '../utils/deduplication'
 import { CSVColumnSelector } from './CSVColumnSelector'
 
@@ -93,8 +93,6 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
       return
     }
 
-    const bundleName = batch > 1 && name.trim() ? name.trim() : undefined
-
     onCampaignsChange((prev) => {
       let next = [...prev]
       for (const { built, name: cName } of toAdd) {
@@ -102,7 +100,6 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
           ...built,
           id: generateId(),
           name: cName,
-          ...(bundleName != null ? { bundleName } : {}),
         })
       }
       return next
@@ -125,46 +122,13 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
     onCampaignsChange([])
   }, [onCampaignsChange])
 
-  const { bundleOrder, bundles, ungrouped } = useMemo(() => {
-    const bundles = new Map<string, Campaign[]>()
-    const ungrouped: Campaign[] = []
-    for (const c of campaigns) {
-      const bn = c.bundleName?.trim()
-      if (bn) {
-        if (!bundles.has(bn)) bundles.set(bn, [])
-        bundles.get(bn)!.push(c)
-      } else {
-        ungrouped.push(c)
-      }
-    }
-    const bundleOrder = [...bundles.keys()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
-    return { bundleOrder, bundles, ungrouped }
-  }, [campaigns])
-
-  const renderCampaignItem = (c: Campaign) => (
-    <li key={c.id} className="campaign-input__item">
-      <span className="campaign-input__item-name">{c.name}</span>
-      <span className="campaign-input__item-count">{c.terms.length} unique terms</span>
-      <button
-        type="button"
-        className="btn btn--small btn--danger"
-        onClick={() => removeCampaign(c.id)}
-        aria-label={`Remove ${c.name}`}
-      >
-        Remove
-      </button>
-    </li>
-  )
-
   return (
     <section className="panel campaign-input">
       <h2>Campaign Input</h2>
       <p className="panel-desc">
         Add campaigns by uploading one or more CSV files (bulk). Each file becomes its own campaign. Terms are
         deduplicated per campaign. If the file includes a <strong>Clicks</strong> column, totals are summed per
-        keyword for the Deduplication tab. If you upload <strong>multiple</strong> files at once, you can enter a
-        name under <strong>Campaign name</strong> to group that batch as one bundle; leave it empty and naming
-        behaves as before.
+        keyword for the Deduplication tab.
       </p>
 
       <div className="campaign-input__add">
@@ -175,16 +139,16 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Optional: bundle label when uploading several CSVs at once (groups them for organization)"
+            placeholder="Optional prefix; combined with file name when uploading multiple files"
           />
         </div>
 
         <div className="campaign-input__csv">
-          <label htmlFor="campaign-csv-input">Upload CSV/Excel (bulk select)</label>
+          <label htmlFor="campaign-csv-input">Upload CSV (bulk select)</label>
           <input
             id="campaign-csv-input"
             type="file"
-            accept={TABULAR_UPLOAD_ACCEPT}
+            accept=".csv,.txt"
             multiple
             onChange={handleFileChange}
             className="campaign-input__file"
@@ -236,22 +200,22 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
         {campaigns.length === 0 ? (
           <p className="muted">No campaigns yet. Upload one or more CSV files above.</p>
         ) : (
-          <>
-            {bundleOrder.map((bn) => (
-              <div key={bn} className="campaign-input__bundle">
-                <h4 className="campaign-input__bundle-title">{bn}</h4>
-                <ul>{bundles.get(bn)!.map(renderCampaignItem)}</ul>
-              </div>
+          <ul>
+            {campaigns.map((c) => (
+              <li key={c.id} className="campaign-input__item">
+                <span className="campaign-input__item-name">{c.name}</span>
+                <span className="campaign-input__item-count">{c.terms.length} unique terms</span>
+                <button
+                  type="button"
+                  className="btn btn--small btn--danger"
+                  onClick={() => removeCampaign(c.id)}
+                  aria-label={`Remove ${c.name}`}
+                >
+                  Remove
+                </button>
+              </li>
             ))}
-            {ungrouped.length > 0 && (
-              <>
-                {bundleOrder.length > 0 && (
-                  <h4 className="campaign-input__bundle-title campaign-input__bundle-title--solo">Other campaigns</h4>
-                )}
-                <ul>{ungrouped.map(renderCampaignItem)}</ul>
-              </>
-            )}
-          </>
+          </ul>
         )}
       </div>
     </section>
