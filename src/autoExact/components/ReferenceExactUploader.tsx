@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react'
 import { parseReferenceExactCsvWithMetrics, type ReferenceExactResult } from '../utils/referenceExact'
+import { readEncodedTextFile, TABULAR_UPLOAD_ACCEPT } from '../../utils/readEncodedTextFile'
 
 interface ReferenceExactUploaderProps {
   onDataLoaded: (data: ReferenceExactResult) => void
@@ -7,26 +8,24 @@ interface ReferenceExactUploaderProps {
   campaignRowCount: number
   /** Distinct keyword + ASIN targets (one per product) */
   uniqueKeywordCount: number
+  referenceFormat?: ReferenceExactResult['referenceFormat']
 }
 
 export function ReferenceExactUploader({
   onDataLoaded,
   campaignRowCount,
   uniqueKeywordCount,
+  referenceFormat,
 }: ReferenceExactUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
       if (!file) return
-      const reader = new FileReader()
-      reader.onload = () => {
-        const text = String(reader.result ?? '')
-        const result = parseReferenceExactCsvWithMetrics(text)
-        onDataLoaded(result)
-      }
-      reader.readAsText(file, 'UTF-8')
+      const text = await readEncodedTextFile(file)
+      const result = parseReferenceExactCsvWithMetrics(text)
+      onDataLoaded(result)
       e.target.value = ''
     },
     [onDataLoaded]
@@ -39,16 +38,24 @@ export function ReferenceExactUploader({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv,.txt"
+          accept={TABULAR_UPLOAD_ACCEPT}
           onChange={handleFileChange}
           className="auto-exact-reference-file"
         />
         {campaignRowCount > 0 && (
           <p className="auto-exact-reference-count muted">
-            {campaignRowCount} campaign{campaignRowCount === 1 ? '' : 's'} · {uniqueKeywordCount} keyword–ASIN pair
-            {uniqueKeywordCount === 1 ? '' : 's'}
-            {uniqueKeywordCount < campaignRowCount && (
-              <span className="auto-exact-reference-dup-hint"> (duplicate CSV rows merged)</span>
+            {referenceFormat === 'targeting-export' ? (
+              <>
+                {campaignRowCount} EXACT keyword{campaignRowCount === 1 ? '' : 's'} from targeting export
+              </>
+            ) : (
+              <>
+                {campaignRowCount} campaign{campaignRowCount === 1 ? '' : 's'} · {uniqueKeywordCount} keyword–ASIN pair
+                {uniqueKeywordCount === 1 ? '' : 's'}
+                {uniqueKeywordCount < campaignRowCount && (
+                  <span className="auto-exact-reference-dup-hint"> (duplicate CSV rows merged)</span>
+                )}
+              </>
             )}
           </p>
         )}

@@ -314,6 +314,7 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
           onDataLoaded={setReferenceExactData}
           campaignRowCount={referenceExactData?.campaignRowCount ?? 0}
           uniqueKeywordCount={referenceTargetCount}
+          referenceFormat={referenceExactData?.referenceFormat}
         />
       </div>
 

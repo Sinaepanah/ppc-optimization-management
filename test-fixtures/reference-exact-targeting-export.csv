@@ -1,0 +1,5 @@
+select,State,Keyword,Target match type,Target status,Clicks,Total cost,Purchases,Sales
+,ENABLED,pool test strips,EXACT,TARGETING_CLAUSE_STATUS_LIVE,161,287.88,12,480.87
+,ENABLED,pool test kit,EXACT,TARGETING_CLAUSE_STATUS_LIVE,155,294.65,10,369.90
+,ENABLED,pool water testing kit,EXACT,TARGETING_CLAUSE_STATUS_LIVE,48,84.60,2,73.98
+,ENABLED,broad pool term,BROAD,TARGETING_CLAUSE_STATUS_LIVE,99,50.00,0,0
