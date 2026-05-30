@@ -1,10 +1,39 @@
+import type { MatchTargetKind } from '../types'
+
 const COMMON_TERM_COLUMNS = [
   'Customer Search Term',
+  'Matched product',
   'Search term',
   'Search Term',
   'Query',
   'Keyword',
 ]
+
+/** Target/match column for within-file dedup: Keywords (keyword reports) before Product targets (product reports). */
+export function detectMatchTargetColumn(headers: string[]): number {
+  const cells = headers.map((h) => normalizeHeaderCell(h))
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (h === 'keywords' || h === 'keyword') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (h === 'product targets' || h === 'product target') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    if (cells[i] === 'targeting') return i
+  }
+  return -1
+}
+
+export function classifyMatchTargetColumn(headers: string[], col: number): MatchTargetKind | undefined {
+  if (col < 0) return undefined
+  const h = normalizeHeaderCell(headers[col] ?? '')
+  if (h === 'keywords' || h === 'keyword') return 'keywords'
+  if (h === 'product targets' || h === 'product target') return 'product-targets'
+  if (h === 'targeting') return 'targeting'
+  return undefined
+}
 
 /** Prefer tab, then semicolon (EU Excel), else comma. */
 export function detectDelimiter(text: string): ',' | '\t' | ';' {
@@ -213,6 +242,107 @@ export function detectClicksColumn(headers: string[]): number {
     if (/^clicks?$/i.test(raw) || /^[\d\s\-–—daywk]+clicks?$/i.test(normalizeHeaderCell(raw))) {
       if (!isExcludedClicksHeader(normalizeHeaderCell(raw))) return i
     }
+  }
+  return -1
+}
+
+/**
+ * Order / purchase count column — not revenue ("Sales" dollars), not sales rank.
+ * Matches Purchases, Orders, 7 Day Total Orders, etc.
+ */
+export function detectPurchasesColumn(headers: string[]): number {
+  if (!headers?.length) return -1
+  const cells = headers.map((h) => normalizeHeaderCell(h))
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (h === 'purchases' || h === 'purchase') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (/\b(7|14|30|\d+)\s*day\s*total\s*orders?\b/i.test(h)) return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (/\battributed\s*orders?\b/i.test(h)) return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (/\bunits?\s*ordered\b/i.test(h)) return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    const lettersOnly = h.replace(/[^a-z]/g, '')
+    if (lettersOnly === 'orders' || lettersOnly === 'order') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (!/\borders?\b/.test(h)) continue
+    if (/\border\s*(id|#|number)\b|sales\s*rank/i.test(h)) continue
+    return i
+  }
+  return -1
+}
+
+function isExcludedSpendHeader(h: string): boolean {
+  return /cpc|cost\s*per\s*click|cost\s*per|per\s*click|vcpm|ctr|acos|roas|fee\s*only/i.test(h)
+}
+
+/** Ad spend / cost column (currency), not CPC. */
+export function detectSpendColumn(headers: string[]): number {
+  if (!headers?.length) return -1
+  const cells = headers.map((h) => normalizeHeaderCell(h))
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (h === 'spend') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (/\btotal\s*spend\b/.test(h)) return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (/\btotal\s*cost\b/.test(h) && !isExcludedSpendHeader(h)) return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    const lettersOnly = h.replace(/[^a-z]/g, '')
+    if (lettersOnly === 'spend') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (!/\b(spend|cost)\b/.test(h)) continue
+    if (isExcludedSpendHeader(h)) continue
+    if (/rank|sku|asin|fee\s*only|tax\b/i.test(h)) continue
+    return i
+  }
+  return -1
+}
+
+/** Attributed sales revenue (currency) for ACOS — not sales rank, not ACoS %, not order counts. */
+export function detectAttributedSalesColumn(headers: string[]): number {
+  if (!headers?.length) return -1
+  const cells = headers.map((h) => normalizeHeaderCell(h))
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (h === 'sales' || h === 'sale') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    const lettersOnly = h.replace(/[^a-z]/g, '')
+    if (lettersOnly === 'sales' || lettersOnly === 'sale') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (/\b(14|7|30|\d+)\s*day.*\bsales\b|\battributed.*sales\b|\btotal\s*sales\b/i.test(h)) {
+      if (/cost|acos|a.?co.?s|advertising\s*cost|rank|tax\b/i.test(h)) continue
+      return i
+    }
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (!/\bsales\b/.test(h)) continue
+    if (/rank|velocity|cost\s*of|advertising\s*cost|acos|fee\s*only/i.test(h)) continue
+    return i
   }
   return -1
 }

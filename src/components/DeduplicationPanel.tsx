@@ -8,6 +8,7 @@ import {
   findCrossCampaignDuplicates,
   findSingleSheetDuplicatesByCampaign,
   findWithinFileDuplicates,
+  withinFileMatchLabels,
   type SingleSheetDuplicateResult,
 } from '../utils/deduplication'
 import { LARGE_DATA_WARNING } from '../types'
@@ -138,6 +139,11 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
 
   const needsReimportForWithinFile =
     isWithinFileMode && withinFileSources.length > 0 && !campaignsHaveMatchBreakdown(withinFileSources)
+
+  const withinFileLabels = useMemo(
+    () => withinFileMatchLabels(withinFileSources[0]?.matchTargetKind),
+    [withinFileSources]
+  )
 
   const duplicateTerms = useMemo(() => duplicates.map((d) => d.normalizedTerm), [duplicates])
 
@@ -299,7 +305,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                   value={minCampaigns}
                   onChange={(e) => setMinCampaigns(Math.max(2, parseInt(e.target.value, 10) || 2))}
                 />{' '}
-                {isWithinFileMode ? 'keywords' : dedupMode === 'batches' ? 'batches' : 'campaigns'}
+                {isWithinFileMode ? withinFileLabels.plural : dedupMode === 'batches' ? 'batches' : 'campaigns'}
               </label>
             </div>
           </div>
@@ -335,7 +341,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
               <p className="dedup-summary">
                 <strong>{duplicates.length}</strong> terms{' '}
                 {isWithinFileMode
-                  ? `matched by ${minCampaigns}+ keywords in this file`
+                  ? `matched by ${minCampaigns}+ ${withinFileLabels.plural} in this file`
                   : `appear in ${minCampaigns}+ ${dedupMode === 'batches' ? 'batches' : 'campaigns'}`}
                 .
               </p>
@@ -352,6 +358,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                 results={duplicates}
                 batchMode={dedupMode === 'batches'}
                 withinFileMode={isWithinFileMode}
+                withinFileLabels={withinFileLabels}
               />
             </>
           )}
@@ -581,10 +588,12 @@ function DupResultsTable({
   results,
   batchMode = false,
   withinFileMode = false,
+  withinFileLabels = withinFileMatchLabels(undefined),
 }: {
   results: DuplicateResult[]
   batchMode?: boolean
   withinFileMode?: boolean
+  withinFileLabels?: ReturnType<typeof withinFileMatchLabels>
 }) {
   const [filterQuery, setFilterQuery] = useState('')
   const [minClicksInput, setMinClicksInput] = useState('')
@@ -757,7 +766,7 @@ function DupResultsTable({
           className="dedup-table-filter__input"
           placeholder={
             withinFileMode
-              ? 'Search by term or matched keyword…'
+              ? withinFileLabels.searchPlaceholder
               : batchMode
                 ? 'Search by term or batch name…'
                 : 'Search by term or source name…'
@@ -776,7 +785,7 @@ function DupResultsTable({
       <table className="results-table results-table--dedup-sort">
         <caption className="sr-only">
           Duplicate search terms across{' '}
-          {withinFileMode ? 'matched keywords in one file' : batchMode ? 'batches' : 'campaigns'}. Click a column
+          {withinFileMode ? `matched ${withinFileLabels.plural} in one file` : batchMode ? 'batches' : 'campaigns'}. Click a column
           heading to sort. Click again to reverse order.
         </caption>
         <thead>
@@ -786,7 +795,7 @@ function DupResultsTable({
               Count
             </SortTh>
             <SortTh colKey="campaigns">
-              {withinFileMode ? 'Matched keyword' : batchMode ? 'Batch' : 'Source (file / campaign)'}
+              {withinFileMode ? withinFileLabels.singular : batchMode ? 'Batch' : 'Source (file / campaign)'}
             </SortTh>
             <SortTh colKey="totalClicks" align="right">
               Clicks
@@ -833,7 +842,7 @@ function DupResultsTable({
               <tr className="dedup-row-combined">
                 <td className="dedup-td-source dedup-td-combined-label">
                   {withinFileMode
-                    ? 'All keywords combined'
+                    ? withinFileLabels.combined
                     : batchMode
                       ? 'All batches combined'
                       : 'All sources combined'}

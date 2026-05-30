@@ -119,6 +119,12 @@ function ensureMaps(campaigns: Campaign[]): Campaign[] {
     const bundleName =
       typeof c.bundleName === 'string' && c.bundleName.trim().length > 0 ? c.bundleName.trim() : undefined
     const termMatchBreakdown = restoreTermMatchBreakdown(c.termMatchBreakdown)
+    const matchTargetKind =
+      c.matchTargetKind === 'keywords' ||
+      c.matchTargetKind === 'product-targets' ||
+      c.matchTargetKind === 'targeting'
+        ? c.matchTargetKind
+        : undefined
     return {
       id: c.id,
       name: c.name,
@@ -130,6 +136,7 @@ function ensureMaps(campaigns: Campaign[]): Campaign[] {
       normalizedToSpend,
       normalizedToAttributedSales,
       ...(termMatchBreakdown != null ? { termMatchBreakdown } : {}),
+      ...(matchTargetKind != null ? { matchTargetKind } : {}),
     }
   })
 }

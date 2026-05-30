@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { parseCSV, detectClicksColumn, detectDelimiter, findSearchTermReportHeaderRow } from '../src/utils/csv.ts'
+import { parseCSV, detectClicksColumn, detectDelimiter, detectMatchTargetColumn, findSearchTermReportHeaderRow } from '../src/utils/csv.ts'
 import { buildCampaignFromSearchTermRows, findWithinFileDuplicates } from '../src/utils/deduplication.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -83,5 +83,24 @@ assert.equal(withinDups[0]!.clicksByCampaign.get('salt water aquarium testing ki
 
 const noWithinDups = findWithinFileDuplicates([withinCampaign], 4)
 assert.equal(noWithinDups.length, 0)
+assert.equal(withinBuilt.matchTargetKind, 'keywords')
 
-console.log('verify-dedup-clicks: OK (preamble + plain + ragged + semicolon + within-file)')
+// Product targeting: Matched product + Product targets (Keywords column absent)
+const productRows = parseCSV(
+  readFileSync(join(__dirname, '../test-fixtures/product-targets-within-file.csv'), 'utf8')
+)
+const productHr = findSearchTermReportHeaderRow(productRows)
+const productHeaders = productRows[productHr] ?? []
+assert.equal(detectMatchTargetColumn(productHeaders), 2)
+const productBuilt = buildCampaignFromSearchTermRows(productRows, 1)
+assert.equal(productBuilt.matchTargetKind, 'product-targets')
+assert.equal(productBuilt.normalizedToClicks.get('pool chemical test kit'), 11)
+assert.ok(productBuilt.termMatchBreakdown?.get('pool chemical test kit')?.size === 2)
+
+const productCampaign = { id: 'test-product', name: 'Product Target Report', ...productBuilt }
+const productDups = findWithinFileDuplicates([productCampaign], 2)
+assert.equal(productDups.length, 1)
+assert.equal(productDups[0]!.normalizedTerm, 'pool chemical test kit')
+assert.equal(productDups[0]!.totalClicks, 11)
+
+console.log('verify-dedup-clicks: OK (preamble + plain + ragged + semicolon + within-file + product-targets)')

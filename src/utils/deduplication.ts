@@ -1,9 +1,11 @@
-import type { Campaign, DuplicateResult, TermMatchMetrics } from '../types'
+import type { Campaign, DuplicateResult, MatchTargetKind, TermMatchMetrics } from '../types'
 import { normalize } from './normalize'
 import {
+  classifyMatchTargetColumn,
   detectDelimiter,
   detectAttributedSalesColumn,
   detectClicksColumn,
+  detectMatchTargetColumn,
   detectPurchasesColumn,
   detectSpendColumn,
   findSearchTermReportHeaderRow,
@@ -241,13 +243,41 @@ export function findCrossBatchDuplicates(campaigns: Campaign[], minBatches: numb
   return results
 }
 
-function detectKeywordsColumn(headers: string[]): number {
-  const cells = headers.map((h) => normalizeHeaderCell(h))
-  for (let i = 0; i < cells.length; i++) {
-    const h = cells[i]
-    if (h === 'keywords' || h === 'keyword') return i
+function emptyTargetLabel(kind: MatchTargetKind | undefined): string {
+  if (kind === 'product-targets') return '(no product target)'
+  if (kind === 'targeting') return '(no target)'
+  return '(no keyword)'
+}
+
+/** UI labels for within-file dedup based on report type (keyword vs product targeting). */
+export function withinFileMatchLabels(kind: MatchTargetKind | undefined): {
+  singular: string
+  plural: string
+  combined: string
+  searchPlaceholder: string
+} {
+  if (kind === 'product-targets') {
+    return {
+      singular: 'Product target',
+      plural: 'product targets',
+      combined: 'All product targets combined',
+      searchPlaceholder: 'Search by term or product target…',
+    }
   }
-  return -1
+  if (kind === 'targeting') {
+    return {
+      singular: 'Target',
+      plural: 'targets',
+      combined: 'All targets combined',
+      searchPlaceholder: 'Search by term or target…',
+    }
+  }
+  return {
+    singular: 'Matched keyword',
+    plural: 'keywords',
+    combined: 'All keywords combined',
+    searchPlaceholder: 'Search by term or matched keyword…',
+  }
 }
 
 function emptyTermMatchMetrics(): TermMatchMetrics {
@@ -418,7 +448,9 @@ export function buildCampaignFromSearchTermRows(
   const purchasesCol = detectPurchasesColumn(headers)
   const spendCol = detectSpendColumn(headers)
   const attributedSalesCol = detectAttributedSalesColumn(headers)
-  const keywordsCol = detectKeywordsColumn(headers)
+  const matchTargetCol = detectMatchTargetColumn(headers)
+  const matchTargetKind = classifyMatchTargetColumn(headers, matchTargetCol)
+  const missingTargetLabel = emptyTargetLabel(matchTargetKind)
 
   const normalizedToOriginal = new Map<string, string>()
   const normalizedToClicks = new Map<string, number>()
@@ -449,14 +481,14 @@ export function buildCampaignFromSearchTermRows(
     normalizedToSpend.set(n, (normalizedToSpend.get(n) ?? 0) + spend)
     normalizedToAttributedSales.set(n, (normalizedToAttributedSales.get(n) ?? 0) + attrSales)
 
-    const rawKeyword =
-      keywordsCol >= 0 ? getCsvCell(padded, keywordsCol).trim() : ''
-    const keywordLabel = rawKeyword || '(no keyword)'
+    const rawTarget =
+      matchTargetCol >= 0 ? getCsvCell(padded, matchTargetCol).trim() : ''
+    const targetLabel = rawTarget || missingTargetLabel
     if (!termMatchBreakdown.has(n)) termMatchBreakdown.set(n, new Map())
-    const byKeyword = termMatchBreakdown.get(n)!
-    byKeyword.set(
-      keywordLabel,
-      addTermMatchMetrics(byKeyword.get(keywordLabel) ?? emptyTermMatchMetrics(), {
+    const byTarget = termMatchBreakdown.get(n)!
+    byTarget.set(
+      targetLabel,
+      addTermMatchMetrics(byTarget.get(targetLabel) ?? emptyTermMatchMetrics(), {
         clicks,
         purchases,
         spend,
@@ -473,6 +505,7 @@ export function buildCampaignFromSearchTermRows(
     normalizedToSpend,
     normalizedToAttributedSales,
     termMatchBreakdown,
+    ...(matchTargetKind != null ? { matchTargetKind } : {}),
   }
 }
 

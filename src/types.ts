@@ -5,6 +5,9 @@ export interface TermMatchMetrics {
   attributedSales: number
 }
 
+/** Which CSV column populated termMatchBreakdown (Keywords vs Product targets). */
+export type MatchTargetKind = 'keywords' | 'product-targets' | 'targeting'
+
 export interface Campaign {
   id: string
   name: string
@@ -20,8 +23,10 @@ export interface Campaign {
   normalizedToSpend: Map<string, number>
   /** Sum of attributed sales revenue (currency) per normalized term when present; used with spend for ACOS. */
   normalizedToAttributedSales: Map<string, number>
-  /** Per search term → matched keyword (Keywords column) → metrics. Used for within-file duplicate detection. */
+  /** Per search term → matched keyword/target label → metrics. Used for within-file duplicate detection. */
   termMatchBreakdown?: Map<string, Map<string, TermMatchMetrics>>
+  /** Source of termMatchBreakdown labels when built from CSV (Keywords vs Product targets). */
+  matchTargetKind?: MatchTargetKind
 }
 
 export interface Topic {
