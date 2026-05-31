@@ -112,15 +112,8 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
 
   const isWithinFileMode = useMemo(() => {
     if (manualKeywordCampaign || selectedCampaigns.length === 0) return false
-    if (dedupMode === 'batches') {
-      const keys = new Set<string>()
-      for (const c of selectedCampaigns) {
-        keys.add(c.bundleName?.trim() || `__ungrouped:${c.id}`)
-      }
-      return keys.size === 1
-    }
-    return selectedCampaigns.length === 1
-  }, [selectedCampaigns, manualKeywordCampaign, dedupMode])
+    return true
+  }, [selectedCampaigns.length, manualKeywordCampaign])
 
   const withinFileSources = selectedCampaigns
 
@@ -226,7 +219,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     <section className="panel deduplication-panel">
       <h2>Cross-campaign deduplication</h2>
       <p className="panel-desc">
-        Select 1 or more campaigns to find search terms that repeat. With a <strong>single file</strong>, the app finds the same customer search term matched by multiple <strong>Keywords</strong> rows. With multiple files, use <strong>As is</strong> to compare each upload or <strong>Batch mode</strong> to merge metrics per bundle name from Campaign Input. Each duplicate term uses one block of rows, then a combined totals row with blended <strong>ACOS</strong> when your CSVs include spend and attributed sales. Excel exports often use UTF-16 or semicolon separators — both are supported. Re-import files after app updates so metrics refresh.
+        Select 1 or more campaigns to find search terms that repeat. The app finds the same customer search term matched by multiple <strong>Keywords</strong> rows (combined across all selected uploads). Use <strong>As is</strong> or <strong>Batch mode</strong> to organize uploads from Campaign Input. Each duplicate term uses one block of rows, then a combined totals row with blended <strong>ACOS</strong> when your CSVs include spend and attributed sales. Excel exports often use UTF-16 or semicolon separators — both are supported. Re-import files after app updates so metrics refresh.
       </p>
 
       {campaigns.length === 0 ? (
@@ -320,7 +313,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
 
           {campaigns.length > 0 && selectedIds.size === 0 && (
             <p className="muted dedup-batch-hint">
-              Select one or more campaigns above. With a single file selected, within-file duplicate detection runs automatically.
+              Select one or more campaigns above to run duplicate detection.
             </p>
           )}
 
@@ -330,7 +323,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
             </p>
           )}
 
-          {dedupMode === 'batches' && !isWithinFileMode && dedupSources.length >= 2 && dedupBatchCount < 2 && (
+          {dedupMode === 'batches' && manualKeywordCampaign && !isWithinFileMode && dedupSources.length >= 2 && dedupBatchCount < 2 && (
             <p className="muted dedup-batch-hint">
               Batch mode needs selections from at least two batches (different bundle names, or mix bundled and unbundled files as separate batches).
             </p>
@@ -341,7 +334,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
               <p className="dedup-summary">
                 <strong>{duplicates.length}</strong> terms{' '}
                 {isWithinFileMode
-                  ? `matched by ${minCampaigns}+ ${withinFileLabels.plural} in this file`
+                  ? `matched by ${minCampaigns}+ ${withinFileLabels.plural}${selectedCampaigns.length === 1 ? ' in this file' : ' across selected uploads'}`
                   : `appear in ${minCampaigns}+ ${dedupMode === 'batches' ? 'batches' : 'campaigns'}`}
                 .
               </p>

@@ -127,6 +127,22 @@ export function normalizeHeaderCell(h: string): string {
     .replace(/\s+/g, ' ')
 }
 
+export function resolveTermColumnForFile(
+  rows: string[][],
+  referenceHeaders: string[],
+  referenceColumnIndex: number
+): number {
+  const headerRow = findSearchTermReportHeaderRow(rows)
+  const headers = rows[headerRow] ?? rows[0] ?? []
+  const refNorm = normalizeHeaderCell(referenceHeaders[referenceColumnIndex] ?? '')
+  if (refNorm) {
+    for (let i = 0; i < headers.length; i++) {
+      if (normalizeHeaderCell(headers[i] ?? '') === refNorm) return i
+    }
+  }
+  return detectSearchTermColumn(headers)
+}
+
 export function detectSearchTermColumn(headers: string[]): number {
   const idx = findSearchTermColumnIndex(headers)
   return idx >= 0 ? idx : 0
@@ -189,6 +205,13 @@ export function findSearchTermReportHeaderRow(rows: string[][], maxScan = 80): n
     if (termIdx >= 0 && clickIdx >= 0) return i
   }
   return 0
+}
+
+/** Drop Amazon report title rows so row 0 is the real header (matches Campaign Input / dedup). */
+export function normalizeSearchTermReportRows(rows: string[][]): string[][] {
+  if (rows.length === 0) return rows
+  const headerRow = findSearchTermReportHeaderRow(rows)
+  return headerRow > 0 ? rows.slice(headerRow) : rows
 }
 
 export function getColumnOptions(rows: string[][], headerRowIndex?: number): string[] {
