@@ -733,6 +733,14 @@ body {
   word-break: break-word;
 }
 
+.results-table--dedup-sort td.dedup-td-term code.dedup-term-copy {
+  cursor: pointer;
+}
+
+.results-table--dedup-sort td.dedup-td-term code.dedup-term-copy:hover {
+  text-decoration: underline;
+}
+
 .results-table--dedup-sort td.dedup-td-source {
   min-width: 14rem;
   max-width: 28rem;
@@ -951,6 +959,15 @@ body {
 .dedup-metric-filters__input:focus {
   outline: 2px solid var(--color-primary);
   outline-offset: 1px;
+}
+
+.dedup-metric-filters__checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  min-height: 2.15rem;
+  color: var(--color-text);
 }
 
 .dedup-metric-filters__hint {

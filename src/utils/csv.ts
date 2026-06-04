@@ -148,6 +148,15 @@ export function detectSearchTermColumn(headers: string[]): number {
   return idx >= 0 ? idx : 0
 }
 
+/** Upload modal hint: SP product-targeting reports use Matched product instead of Customer Search Term. */
+export function termColumnSelectionHint(headers: string[]): string {
+  const lower = headers.map((h) => normalizeHeaderCell(h))
+  if (lower.some((cell) => cell === 'matched product')) {
+    return 'Select the column that contains matched products or search terms (Matched product or Customer Search Term):'
+  }
+  return 'Select the column that contains search terms:'
+}
+
 /** Index of the search-term column, or -1 if no known header matches. */
 export function findSearchTermColumnIndex(headers: string[]): number {
   const lower = headers.map((h) => normalizeHeaderCell(h))

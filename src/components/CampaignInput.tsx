@@ -1,6 +1,12 @@
 import { useState, useCallback, type FC } from 'react'
 import type { Campaign } from '../types'
-import { parseCSV, detectSearchTermColumn, findSearchTermReportHeaderRow, resolveTermColumnForFile } from '../utils/csv'
+import {
+  parseCSV,
+  detectSearchTermColumn,
+  findSearchTermReportHeaderRow,
+  normalizeSearchTermReportRows,
+  resolveTermColumnForFile,
+} from '../utils/csv'
 import { readEncodedTextFile } from '../utils/readEncodedTextFile'
 import { buildCampaignFromSearchTermRows } from '../utils/deduplication'
 import { CSVColumnSelector } from './CSVColumnSelector'
@@ -53,7 +59,7 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
       const parsed: { fileName: string; rows: string[][] }[] = []
       for (const file of files) {
         const text = await readEncodedTextFile(file)
-        const rows = parseCSV(text)
+        const rows = normalizeSearchTermReportRows(parseCSV(text))
         if (rows.length > 0) parsed.push({ fileName: file.name, rows })
       }
       if (parsed.length === 0) return

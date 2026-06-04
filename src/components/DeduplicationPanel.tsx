@@ -139,6 +139,11 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
   )
 
   const duplicateTerms = useMemo(() => duplicates.map((d) => d.normalizedTerm), [duplicates])
+  const [exportTerms, setExportTerms] = useState<string[]>([])
+
+  useEffect(() => {
+    setExportTerms(duplicateTerms)
+  }, [duplicateTerms])
 
   const showCopyFeedback = useCallback(() => {
     setCopyFeedback(true)
@@ -339,7 +344,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                 .
               </p>
               <ExportControls
-                items={duplicateTerms}
+                items={exportTerms}
                 format={exportFormat}
                 onFormatChange={setExportFormat}
                 onCopy={showCopyFeedback}
@@ -347,11 +352,18 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                 label="Export duplicates"
               />
               {copyFeedback && <span className="feedback">Copied to clipboard.</span>}
+              {exportTerms.length !== duplicateTerms.length && (
+                <p className="muted dedup-export-hint">
+                  Copy and CSV export use the {exportTerms.length} term{exportTerms.length === 1 ? '' : 's'} currently
+                  visible in the table below ({duplicateTerms.length} total).
+                </p>
+              )}
               <DupResultsTable
                 results={duplicates}
                 batchMode={dedupMode === 'batches'}
                 withinFileMode={isWithinFileMode}
                 withinFileLabels={withinFileLabels}
+                onVisibleTermsChange={setExportTerms}
               />
             </>
           )}
@@ -534,15 +546,25 @@ function parseOptionalNonNegNumber(s: string): number | undefined {
   return n
 }
 
+function dupTotalAttributedSales(r: DuplicateResult): number {
+  let sum = 0
+  for (const v of r.attributedSalesByCampaign.values()) sum += v
+  return sum
+}
+
 function passesMetricThresholds(
   r: DuplicateResult,
   minClicks?: number,
+  maxClicks?: number,
   minPurch?: number,
+  maxPurch?: number,
   minAcosPct?: number,
   maxAcosPct?: number
 ): boolean {
   if (minClicks !== undefined && r.totalClicks < minClicks) return false
+  if (maxClicks !== undefined && r.totalClicks > maxClicks) return false
   if (minPurch !== undefined && r.totalPurchases < minPurch) return false
+  if (maxPurch !== undefined && r.totalPurchases > maxPurch) return false
   if (minAcosPct !== undefined || maxAcosPct !== undefined) {
     const acos = r.totalAcosPct
     if (acos == null) return false
@@ -577,22 +599,56 @@ function compareDupRows(a: DuplicateResult, b: DuplicateResult, key: DupSortKey)
   return cmp
 }
 
+function CopyableNormalizedTerm({ term }: { term: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(term).then(() => {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1600)
+    })
+  }, [term])
+
+  return (
+    <code
+      className="dedup-term-copy"
+      role="button"
+      tabIndex={0}
+      title={copied ? 'Copied!' : 'Click to copy'}
+      onClick={handleCopy}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          handleCopy()
+        }
+      }}
+    >
+      {term}
+    </code>
+  )
+}
+
 function DupResultsTable({
   results,
   batchMode = false,
   withinFileMode = false,
   withinFileLabels = withinFileMatchLabels(undefined),
+  onVisibleTermsChange,
 }: {
   results: DuplicateResult[]
   batchMode?: boolean
   withinFileMode?: boolean
   withinFileLabels?: ReturnType<typeof withinFileMatchLabels>
+  onVisibleTermsChange?: (terms: string[]) => void
 }) {
   const [filterQuery, setFilterQuery] = useState('')
   const [minClicksInput, setMinClicksInput] = useState('')
+  const [maxClicksInput, setMaxClicksInput] = useState('')
   const [minPurchInput, setMinPurchInput] = useState('')
+  const [maxPurchInput, setMaxPurchInput] = useState('')
   const [minAcosInput, setMinAcosInput] = useState('')
   const [maxAcosInput, setMaxAcosInput] = useState('')
+  const [zeroSalesOnly, setZeroSalesOnly] = useState(false)
   const [sort, setSort] = useState<{ key: DupSortKey; dir: DupSortDir }>({
     key: 'count',
     dir: 'desc',
@@ -601,25 +657,35 @@ function DupResultsTable({
   const metricParsed = useMemo(
     () => ({
       minClicks: parseOptionalNonNegNumber(minClicksInput),
+      maxClicks: parseOptionalNonNegNumber(maxClicksInput),
       minPurch: parseOptionalNonNegNumber(minPurchInput),
+      maxPurch: parseOptionalNonNegNumber(maxPurchInput),
       minAcos: parseOptionalNonNegNumber(minAcosInput),
       maxAcos: parseOptionalNonNegNumber(maxAcosInput),
     }),
-    [minClicksInput, minPurchInput, minAcosInput, maxAcosInput]
+    [minClicksInput, maxClicksInput, minPurchInput, maxPurchInput, minAcosInput, maxAcosInput]
   )
 
   const afterMetricFilters = useMemo(() => {
-    const { minClicks, minPurch, minAcos, maxAcos } = metricParsed
+    const { minClicks, maxClicks, minPurch, maxPurch, minAcos, maxAcos } = metricParsed
+    let list = results
     if (
-      minClicks === undefined &&
-      minPurch === undefined &&
-      minAcos === undefined &&
-      maxAcos === undefined
+      minClicks !== undefined ||
+      maxClicks !== undefined ||
+      minPurch !== undefined ||
+      maxPurch !== undefined ||
+      minAcos !== undefined ||
+      maxAcos !== undefined
     ) {
-      return results
+      list = list.filter((r) =>
+        passesMetricThresholds(r, minClicks, maxClicks, minPurch, maxPurch, minAcos, maxAcos)
+      )
     }
-    return results.filter((r) => passesMetricThresholds(r, minClicks, minPurch, minAcos, maxAcos))
-  }, [results, metricParsed])
+    if (zeroSalesOnly) {
+      list = list.filter((r) => dupTotalAttributedSales(r) === 0)
+    }
+    return list
+  }, [results, metricParsed, zeroSalesOnly])
 
   const filteredResults = useMemo(() => {
     const q = filterQuery.trim().toLowerCase()
@@ -644,6 +710,10 @@ function DupResultsTable({
     arr.sort((a, b) => mul * compareDupRows(a, b, sort.key))
     return arr
   }, [filteredResults, sort.key, sort.dir])
+
+  useEffect(() => {
+    onVisibleTermsChange?.(sorted.map((r) => r.normalizedTerm))
+  }, [sorted, onVisibleTermsChange])
 
   const SortTh = ({
     colKey,
@@ -684,9 +754,12 @@ function DupResultsTable({
   const textFilterActive = filterQuery.trim().length > 0
   const metricFilterActive =
     minClicksInput.trim() !== '' ||
+    maxClicksInput.trim() !== '' ||
     minPurchInput.trim() !== '' ||
+    maxPurchInput.trim() !== '' ||
     minAcosInput.trim() !== '' ||
-    maxAcosInput.trim() !== ''
+    maxAcosInput.trim() !== '' ||
+    zeroSalesOnly
   const filterActive = textFilterActive || metricFilterActive
 
   return (
@@ -709,6 +782,18 @@ function DupResultsTable({
             />
           </label>
           <label className="dedup-metric-filters__field">
+            <span className="dedup-metric-filters__field-label">Max clicks</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              className="dedup-metric-filters__input"
+              placeholder="—"
+              value={maxClicksInput}
+              onChange={(e) => setMaxClicksInput(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          <label className="dedup-metric-filters__field">
             <span className="dedup-metric-filters__field-label">Min orders</span>
             <input
               type="text"
@@ -717,6 +802,18 @@ function DupResultsTable({
               placeholder="—"
               value={minPurchInput}
               onChange={(e) => setMinPurchInput(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          <label className="dedup-metric-filters__field">
+            <span className="dedup-metric-filters__field-label">Max orders</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              className="dedup-metric-filters__input"
+              placeholder="—"
+              value={maxPurchInput}
+              onChange={(e) => setMaxPurchInput(e.target.value)}
               autoComplete="off"
             />
           </label>
@@ -744,9 +841,20 @@ function DupResultsTable({
               autoComplete="off"
             />
           </label>
+          <label className="dedup-metric-filters__field dedup-metric-filters__field--checkbox">
+            <span className="dedup-metric-filters__field-label">Sales filter</span>
+            <span className="dedup-metric-filters__checkbox-row">
+              <input
+                type="checkbox"
+                checked={zeroSalesOnly}
+                onChange={(e) => setZeroSalesOnly(e.target.checked)}
+              />
+              Zero sales only
+            </span>
+          </label>
         </div>
         <p className="dedup-metric-filters__hint">
-          Uses the combined row totals (all sources / all batches). ACOS filters apply only when blended ACOS exists. Leave fields blank to skip.
+          Uses the combined row totals (all sources / all batches). ACOS filters apply only when blended ACOS exists. Zero sales uses combined attributed sales from your CSV. Leave fields blank to skip.
         </p>
       </div>
       <div className="dedup-table-filter" role="search">
@@ -814,7 +922,7 @@ function DupResultsTable({
                     {i === 0 && (
                       <>
                         <td rowSpan={span} className="dedup-td-term">
-                          <code>{r.normalizedTerm}</code>
+                          <CopyableNormalizedTerm term={r.normalizedTerm} />
                         </td>
                         <td rowSpan={span} className="dedup-td-num dedup-td-count">
                           {r.campaignCount}

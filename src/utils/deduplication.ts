@@ -284,6 +284,22 @@ function emptyTermMatchMetrics(): TermMatchMetrics {
   return { clicks: 0, purchases: 0, spend: 0, attributedSales: 0 }
 }
 
+/**
+ * SP product-targeting exports sometimes repeat the same Matched product + Product targets pair on
+ * multiple rows. Give each repeated row its own breakdown key (like distinct keyword rows) instead
+ * of merging metrics into one bucket.
+ */
+function resolveTargetBreakdownKey(
+  byTarget: Map<string, TermMatchMetrics>,
+  baseLabel: string,
+  matchTargetKind: MatchTargetKind | undefined
+): string {
+  if (matchTargetKind !== 'product-targets' || !byTarget.has(baseLabel)) return baseLabel
+  let suffix = 2
+  while (byTarget.has(`${baseLabel} (row ${suffix})`)) suffix++
+  return `${baseLabel} (row ${suffix})`
+}
+
 function addTermMatchMetrics(a: TermMatchMetrics, b: TermMatchMetrics): TermMatchMetrics {
   return {
     clicks: a.clicks + b.clicks,
@@ -483,9 +499,10 @@ export function buildCampaignFromSearchTermRows(
 
     const rawTarget =
       matchTargetCol >= 0 ? getCsvCell(padded, matchTargetCol).trim() : ''
-    const targetLabel = rawTarget || missingTargetLabel
+    const baseTargetLabel = rawTarget || missingTargetLabel
     if (!termMatchBreakdown.has(n)) termMatchBreakdown.set(n, new Map())
     const byTarget = termMatchBreakdown.get(n)!
+    const targetLabel = resolveTargetBreakdownKey(byTarget, baseTargetLabel, matchTargetKind)
     byTarget.set(
       targetLabel,
       addTermMatchMetrics(byTarget.get(targetLabel) ?? emptyTermMatchMetrics(), {
