@@ -380,6 +380,48 @@ export function detectAttributedSalesColumn(headers: string[]): number {
 }
 
 /**
+ * Pre-computed ACOS % column (e.g. Sponsored Brands search-term reports that ship ACOS/ROAS but
+ * leave Spend/Sales as 0). Used as a fallback when spend/sales are unavailable. Value is treated
+ * as a percentage (e.g. 38.44 = 38.44%).
+ */
+export function detectAcosColumn(headers: string[]): number {
+  if (!headers?.length) return -1
+  const cells = headers.map((h) => normalizeHeaderCell(h))
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (h === 'acos' || h === 'acos %' || h === 'acos%' || h === 'acos (%)') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const lettersOnly = cells[i].replace(/[^a-z]/g, '')
+    if (lettersOnly === 'acos') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (/\bacos\b/.test(h) && !/target|rank/.test(h)) return i
+  }
+  return -1
+}
+
+/** Pre-computed ROAS column (revenue per ad dollar). Used only to sanity-check/derive ACOS. */
+export function detectRoasColumn(headers: string[]): number {
+  if (!headers?.length) return -1
+  const cells = headers.map((h) => normalizeHeaderCell(h))
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (h === 'roas' || h === 'roas %' || h === 'roas%') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const lettersOnly = cells[i].replace(/[^a-z]/g, '')
+    if (lettersOnly === 'roas') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (/\broas\b/.test(h) && !/target|rank/.test(h)) return i
+  }
+  return -1
+}
+
+/**
  * When header-based detection fails or reads an empty column, pick the column whose numeric sample
  * sums highest (excluding obvious term/campaign/money columns). Prefer headers containing "click".
  */

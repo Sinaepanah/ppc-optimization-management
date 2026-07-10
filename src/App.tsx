@@ -163,7 +163,7 @@ export default function App() {
             </div>
           </div>
         )}
-        {tab === 'autoExact' && <AutoExactPage profiles={profiles} />}
+        {tab === 'autoExact' && <AutoExactPage profiles={profiles} campaigns={campaigns} />}
         {tab === 'ppcTool' && <PpcToolPage />}
         {tab === 'bulkPpc' && <BulkPpcPage />}
         {tab === 'campaignAsinShare' && <CampaignAsinSharePage />}

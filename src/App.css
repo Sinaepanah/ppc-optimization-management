@@ -532,6 +532,72 @@ body {
 }
 
 /* ===== Deduplication ===== */
+.deduplication-panel > .dedup-panel-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.deduplication-panel > .dedup-panel-heading h2 {
+  margin: 0;
+  padding: 0;
+  border-bottom: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.dedup-info-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  color: var(--color-primary);
+  cursor: help;
+  outline: none;
+}
+
+.dedup-info-tip:hover,
+.dedup-info-tip:focus-visible {
+  background: var(--color-primary-light);
+  color: var(--color-primary-hover, var(--color-primary));
+}
+
+.dedup-info-tip__icon {
+  display: block;
+}
+
+.dedup-info-tip__content {
+  display: none;
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  z-index: 40;
+  width: min(36rem, calc(100vw - 3rem));
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  font-weight: 400;
+  line-height: 1.55;
+  text-align: left;
+  white-space: normal;
+}
+
+.dedup-info-tip:hover .dedup-info-tip__content,
+.dedup-info-tip:focus-within .dedup-info-tip__content {
+  display: block;
+}
+
 .dedup-select {
   margin-bottom: 1.5rem;
   padding: 1.25rem;
@@ -583,12 +649,22 @@ body {
 }
 
 .dedup-manual-keywords__label {
-  display: block;
+  display: list-item;
   font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  margin-bottom: 0.45rem;
+  margin-bottom: 0;
   color: var(--color-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.dedup-manual-keywords__label::-webkit-details-marker {
+  color: var(--color-primary);
+}
+
+.dedup-manual-keywords[open] .dedup-manual-keywords__label {
+  margin-bottom: 0.45rem;
 }
 
 .dedup-manual-keywords__textarea {
@@ -656,6 +732,14 @@ body {
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+}
+
+.dedup-select__min--disabled {
+  opacity: 0.55;
 }
 
 .dedup-select__min label {
@@ -922,6 +1006,22 @@ body {
   margin-bottom: 0.65rem;
 }
 
+.dedup-metric-filters__presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.65rem;
+}
+
+.dedup-metric-filters__non-dup {
+  margin-left: auto;
+  max-width: 100%;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.35;
+}
+
 .dedup-metric-filters__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
@@ -1017,6 +1117,74 @@ body {
   font-size: 0.85rem;
   color: var(--color-text-muted);
   white-space: nowrap;
+}
+
+.dedup-selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.results-table--dedup-sort th.dedup-th-select,
+.results-table--dedup-sort td.dedup-td-select {
+  width: 2.25rem;
+  min-width: 2.25rem;
+  max-width: 2.25rem;
+  padding-left: 0.65rem;
+  padding-right: 0.35rem;
+  text-align: center;
+  vertical-align: top;
+}
+
+/* ===== Dedup export collapsible ===== */
+.dedup-export-collapsible {
+  margin: 1.25rem 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-subtle);
+  overflow: hidden;
+}
+
+.dedup-export-collapsible__summary {
+  list-style: none;
+  padding: 1.25rem 1.5rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--color-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.dedup-export-collapsible__summary::-webkit-details-marker {
+  display: none;
+}
+
+.dedup-export-collapsible__summary::before {
+  content: '▸ ';
+  color: var(--color-primary);
+}
+
+.dedup-export-collapsible[open] .dedup-export-collapsible__summary::before {
+  content: '▾ ';
+}
+
+.dedup-export-collapsible .export-controls {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  border-top: 1px solid var(--color-border);
+  padding-top: 1rem;
+}
+
+.dedup-export-collapsible .export-controls__label {
+  display: none;
+}
+
+.dedup-export-collapsible__feedback {
+  display: block;
+  padding: 0 1.5rem 1rem;
 }
 
 /* ===== Export controls ===== */
@@ -1176,6 +1344,85 @@ body {
 .relevancy-tab__profiles-section .profile-manager {
   margin-bottom: 0;
 }
+
+/*
+ * RELEVANCY SIDEBAR LAYOUT (cosmetic only)
+ * Puts the profile controls box on a sticky left column while the main
+ * relevancy content scrolls on the right. No JS / logic changes.
+ *
+ * TO REVERT: delete this entire block (from this comment through the
+ * closing brace of the @media rule below). The rules above restore
+ * the previous stacked layout automatically.
+ */
+@media (min-width: 960px) {
+  .relevancy-tab {
+    display: grid;
+    grid-template-columns: minmax(16.5rem, 20rem) minmax(0, 1fr);
+    grid-template-areas: 'profiles main';
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  .relevancy-tab__main {
+    grid-area: main;
+    min-width: 0;
+  }
+
+  .relevancy-tab__profiles-section {
+    grid-area: profiles;
+    position: sticky;
+    top: 1rem;
+    align-self: start;
+    max-height: calc(100vh - 2rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .relevancy-tab__profiles-section .profile-manager__unified-grid {
+    margin-bottom: 0.75rem;
+    padding: 0.85rem;
+    gap: 0.75rem;
+  }
+
+  .relevancy-tab__profiles-section .profile-manager__toolbar--inline,
+  .relevancy-tab__profiles-section .profile-manager__select--inline {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+  }
+
+  .relevancy-tab__profiles-section .profile-manager__preset,
+  .relevancy-tab__profiles-section .profile-manager__new {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
+  }
+
+  .relevancy-tab__profiles-section .profile-manager__preset select,
+  .relevancy-tab__profiles-section .profile-manager__select select,
+  .relevancy-tab__profiles-section .profile-manager__new input {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .relevancy-tab__profiles-section .profile-manager__select label {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+  }
+
+  .relevancy-tab__profiles-section .profile-manager__min label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .relevancy-tab__profiles-section .profile-manager__min input {
+    margin-left: 0;
+  }
+}
+/* END RELEVANCY SIDEBAR LAYOUT */
 
 /* Collapsible wrapper for Allowed + Excluded topic lists only */
 .relevancy-tab__topics-outer {

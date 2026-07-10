@@ -1,17 +1,21 @@
-import { useState, useCallback, useMemo, useEffect, type ReactNode } from 'react'
-import { ChevronUp, ChevronDown } from 'lucide-react'
+import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react'
+import { ChevronUp, ChevronDown, Info } from 'lucide-react'
 import type { Campaign, DuplicateResult } from '../types'
 import {
+  buildCampaignFromSearchTermRows,
   buildCampaignFromTerms,
   campaignsHaveMatchBreakdown,
   findCrossBatchDuplicates,
   findCrossCampaignDuplicates,
   findSingleSheetDuplicatesByCampaign,
   findWithinFileDuplicates,
+  normalizeExactTerm,
   withinFileMatchLabels,
   type SingleSheetDuplicateResult,
 } from '../utils/deduplication'
 import { LARGE_DATA_WARNING } from '../types'
+import { detectSearchTermColumn, findSearchTermReportHeaderRow } from '../utils/csv'
+import { resolveCampaignSourceRows } from '../autoExact/utils/campaignSourceRows'
 import { ExportControls, type ExportFormat } from './ExportControls'
 import { isSupportedTabularFile, readEncodedTextFile, TABULAR_UPLOAD_ACCEPT } from '../utils/readEncodedTextFile'
 
@@ -27,6 +31,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
   const [dedupMode, setDedupMode] = useState<'campaigns' | 'batches'>('campaigns')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [minCampaigns, setMinCampaigns] = useState(2)
+  const [nonDuplicatesOnly, setNonDuplicatesOnly] = useState(false)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('plain')
   const [copyFeedback, setCopyFeedback] = useState(false)
   const [manualKeywordText, setManualKeywordText] = useState('')
@@ -69,9 +74,38 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     else setSelectedIds(new Set(campaigns.map((c) => c.id)))
   }, [campaigns, selectedIds.size])
 
+  // Rebuild each campaign's dedup keys with punctuation-preserving normalization so distinct
+  // customer search terms (e.g. "gh kh test kit" vs "gh & kh test kit") are NOT merged. Uses the
+  // original uploaded rows; falls back to the shared-normalized campaign when rows are unavailable.
+  const exactCampaignById = useMemo(() => {
+    const map = new Map<string, Campaign>()
+    for (const c of campaigns) {
+      const rows = resolveCampaignSourceRows(c)
+      if (!rows || rows.length < 2) {
+        map.set(c.id, c)
+        continue
+      }
+      const headerRow = findSearchTermReportHeaderRow(rows)
+      const termCol = detectSearchTermColumn(rows[headerRow] ?? rows[0] ?? [])
+      if (termCol < 0) {
+        map.set(c.id, c)
+        continue
+      }
+      const built = buildCampaignFromSearchTermRows(rows, termCol, normalizeExactTerm)
+      map.set(c.id, { ...c, ...built })
+    }
+    return map
+  }, [campaigns])
+
   const selectedCampaigns = useMemo(
     () => campaigns.filter((c) => selectedIds.has(c.id)),
     [campaigns, selectedIds]
+  )
+
+  // Exact-normalized versions of the selected campaigns, used for all dedup computation.
+  const selectedExactCampaigns = useMemo(
+    () => selectedCampaigns.map((c) => exactCampaignById.get(c.id) ?? c),
+    [selectedCampaigns, exactCampaignById]
   )
 
   const manualKeywordCampaign = useMemo((): Campaign | null => {
@@ -80,7 +114,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
       .map((s) => s.trim())
       .filter(Boolean)
     if (lines.length === 0) return null
-    const fromTerms = buildCampaignFromTerms(lines)
+    const fromTerms = buildCampaignFromTerms(lines, normalizeExactTerm)
     return {
       id: CUSTOM_MANUAL_KEYWORDS_ID,
       name: CUSTOM_MANUAL_KEYWORDS_LABEL,
@@ -90,10 +124,10 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
   }, [manualKeywordText])
 
   const dedupSources = useMemo(() => {
-    const list = [...selectedCampaigns]
+    const list = [...selectedExactCampaigns]
     if (manualKeywordCampaign) list.push(manualKeywordCampaign)
     return list
-  }, [selectedCampaigns, manualKeywordCampaign])
+  }, [selectedExactCampaigns, manualKeywordCampaign])
 
   const totalTerms = useMemo(
     () => dedupSources.reduce((sum, c) => sum + c.terms.length, 0),
@@ -115,10 +149,13 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     return true
   }, [selectedCampaigns.length, manualKeywordCampaign])
 
-  const withinFileSources = selectedCampaigns
+  const withinFileSources = selectedExactCampaigns
 
   const duplicates = useMemo(() => {
     if (isWithinFileMode) {
+      if (nonDuplicatesOnly) {
+        return findWithinFileDuplicates(withinFileSources, 1, 1)
+      }
       return findWithinFileDuplicates(withinFileSources, minCampaigns)
     }
     if (dedupSources.length === 0) return []
@@ -128,7 +165,15 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
       return findCrossBatchDuplicates(dedupSources, minCampaigns)
     }
     return findCrossCampaignDuplicates(dedupSources, minCampaigns)
-  }, [dedupSources, minCampaigns, dedupMode, dedupBatchCount, isWithinFileMode, withinFileSources])
+  }, [
+    dedupSources,
+    minCampaigns,
+    dedupMode,
+    dedupBatchCount,
+    isWithinFileMode,
+    withinFileSources,
+    nonDuplicatesOnly,
+  ])
 
   const needsReimportForWithinFile =
     isWithinFileMode && withinFileSources.length > 0 && !campaignsHaveMatchBreakdown(withinFileSources)
@@ -177,7 +222,8 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
     const base = findSingleSheetDuplicatesByCampaign(
       singleSheetText,
       Math.max(2, singleSheetMinCampaigns),
-      0
+      0,
+      normalizeExactTerm
     )
     const cmp = (value: number, threshold: number, mode: ComparatorMode): boolean => {
       if (mode === 'eq') return value === threshold
@@ -222,10 +268,15 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
 
   return (
     <section className="panel deduplication-panel">
-      <h2>Cross-campaign deduplication</h2>
-      <p className="panel-desc">
-        Select 1 or more campaigns to find search terms that repeat. The app finds the same customer search term matched by multiple <strong>Keywords</strong> rows (combined across all selected uploads). Use <strong>As is</strong> or <strong>Batch mode</strong> to organize uploads from Campaign Input. Each duplicate term uses one block of rows, then a combined totals row with blended <strong>ACOS</strong> when your CSVs include spend and attributed sales. Excel exports often use UTF-16 or semicolon separators — both are supported. Re-import files after app updates so metrics refresh.
-      </p>
+      <div className="dedup-panel-heading">
+        <h2>Cross-campaign deduplication</h2>
+        <span className="dedup-info-tip" tabIndex={0} aria-label="About cross-campaign deduplication">
+          <Info className="dedup-info-tip__icon" aria-hidden size={18} strokeWidth={2.25} />
+          <span className="dedup-info-tip__content" role="tooltip">
+            Select 1 or more campaigns to find search terms that repeat. The app finds the same customer search term matched by multiple <strong>Keywords</strong> rows (combined across all selected uploads). Search terms are matched exactly (case- and spacing-insensitive) — punctuation like <code>&</code> is kept, so <code>gh kh test kit</code> and <code>gh &amp; kh test kit</code> stay separate. Use <strong>As is</strong> or <strong>Batch mode</strong> to organize uploads from Campaign Input. Each duplicate term uses one block of rows, then a combined totals row with blended <strong>ACOS</strong> when your CSVs include spend and attributed sales. Excel exports often use UTF-16 or semicolon separators — both are supported. Re-import files after app updates so metrics refresh.
+          </span>
+        </span>
+      </div>
 
       {campaigns.length === 0 ? (
         <p className="muted">Add campaigns in the Campaign Input tab first.</p>
@@ -255,10 +306,10 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                 </label>
               </div>
             </fieldset>
-            <div className="dedup-manual-keywords">
-              <label className="dedup-manual-keywords__label" htmlFor="dedup-manual-keywords-input">
+            <details className="dedup-manual-keywords">
+              <summary className="dedup-manual-keywords__label">
                 {CUSTOM_MANUAL_KEYWORDS_LABEL}
-              </label>
+              </summary>
               <textarea
                 id="dedup-manual-keywords-input"
                 className="dedup-manual-keywords__textarea"
@@ -276,7 +327,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                   {CUSTOM_MANUAL_KEYWORDS_LABEL}.
                 </p>
               )}
-            </div>
+            </details>
             <div className="dedup-select__campaigns">
               <button type="button" className="btn btn--primary btn--small" onClick={selectAll}>
                 {selectedIds.size === campaigns.length ? 'Deselect all' : 'Select all'}
@@ -294,13 +345,14 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
               ))}
             </div>
             <div className="dedup-select__min">
-              <label>
+              <label className={nonDuplicatesOnly && isWithinFileMode ? 'dedup-select__min--disabled' : undefined}>
                 Show terms {isWithinFileMode ? 'matched by at least' : 'in at least'}{' '}
                 <input
                   type="number"
                   min={2}
                   max={20}
                   value={minCampaigns}
+                  disabled={nonDuplicatesOnly && isWithinFileMode}
                   onChange={(e) => setMinCampaigns(Math.max(2, parseInt(e.target.value, 10) || 2))}
                 />{' '}
                 {isWithinFileMode ? withinFileLabels.plural : dedupMode === 'batches' ? 'batches' : 'campaigns'}
@@ -338,20 +390,27 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
             <>
               <p className="dedup-summary">
                 <strong>{duplicates.length}</strong> terms{' '}
-                {isWithinFileMode
-                  ? `matched by ${minCampaigns}+ ${withinFileLabels.plural}${selectedCampaigns.length === 1 ? ' in this file' : ' across selected uploads'}`
-                  : `appear in ${minCampaigns}+ ${dedupMode === 'batches' ? 'batches' : 'campaigns'}`}
+                {nonDuplicatesOnly && isWithinFileMode
+                  ? `matched by exactly 1 ${withinFileLabels.singular} (not in the duplicate pool)${selectedCampaigns.length === 1 ? '' : ' across selected uploads'}`
+                  : isWithinFileMode
+                    ? `matched by ${minCampaigns}+ ${withinFileLabels.plural}${selectedCampaigns.length === 1 ? ' in this file' : ' across selected uploads'}`
+                    : `appear in ${minCampaigns}+ ${dedupMode === 'batches' ? 'batches' : 'campaigns'}`}
                 .
               </p>
-              <ExportControls
-                items={exportTerms}
-                format={exportFormat}
-                onFormatChange={setExportFormat}
-                onCopy={showCopyFeedback}
-                onExportCSV={() => {}}
-                label="Export duplicates"
-              />
-              {copyFeedback && <span className="feedback">Copied to clipboard.</span>}
+              <details className="dedup-export-collapsible">
+                <summary className="dedup-export-collapsible__summary">
+                  {nonDuplicatesOnly && isWithinFileMode ? 'Export terms' : 'Export duplicates'}
+                </summary>
+                <ExportControls
+                  items={exportTerms}
+                  format={exportFormat}
+                  onFormatChange={setExportFormat}
+                  onCopy={showCopyFeedback}
+                  onExportCSV={() => {}}
+                  label=""
+                />
+                {copyFeedback && <span className="feedback dedup-export-collapsible__feedback">Copied to clipboard.</span>}
+              </details>
               {exportTerms.length !== duplicateTerms.length && (
                 <p className="muted dedup-export-hint">
                   Copy and CSV export use the {exportTerms.length} term{exportTerms.length === 1 ? '' : 's'} currently
@@ -362,18 +421,24 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                 results={duplicates}
                 batchMode={dedupMode === 'batches'}
                 withinFileMode={isWithinFileMode}
+                nonDuplicatesOnly={nonDuplicatesOnly}
+                onNonDuplicatesOnlyChange={setNonDuplicatesOnly}
                 withinFileLabels={withinFileLabels}
                 onVisibleTermsChange={setExportTerms}
               />
             </>
           )}
 
-          {dedupSources.length >= (isWithinFileMode ? 1 : 2) &&
-            selectedIds.size > 0 &&
+          {selectedIds.size > 0 &&
             duplicates.length === 0 &&
             !needsReimportForWithinFile &&
-            !(dedupMode === 'batches' && !isWithinFileMode && dedupBatchCount < 2) && (
-              <p className="muted">No duplicates found for the selected sources and minimum count.</p>
+            !(dedupMode === 'batches' && !isWithinFileMode && dedupBatchCount < 2) &&
+            dedupSources.length >= (isWithinFileMode ? 1 : 2) && (
+              <p className="muted">
+                {nonDuplicatesOnly && isWithinFileMode
+                  ? 'No non-duplicate terms found (every search term is matched by 2+ broad targets).'
+                  : 'No duplicates found for the selected sources and minimum count.'}
+              </p>
             )}
         </>
       )}
@@ -552,6 +617,11 @@ function dupTotalAttributedSales(r: DuplicateResult): number {
   return sum
 }
 
+/** Zero sales = no attributed revenue and no purchase/order count on combined totals. */
+function passesZeroSalesOnly(r: DuplicateResult): boolean {
+  return dupTotalAttributedSales(r) === 0 && r.totalPurchases === 0
+}
+
 function passesMetricThresholds(
   r: DuplicateResult,
   minClicks?: number,
@@ -599,6 +669,156 @@ function compareDupRows(a: DuplicateResult, b: DuplicateResult, key: DupSortKey)
   return cmp
 }
 
+interface MetricFilterValues {
+  minClicks: string
+  maxClicks: string
+  minPurch: string
+  maxPurch: string
+  minAcos: string
+  maxAcos: string
+  zeroSalesOnly: boolean
+}
+
+const METRIC_PRESETS_STORAGE_KEY = 'dedup-metric-filter-presets-by-mode'
+const LEGACY_METRIC_PRESETS_STORAGE_KEY = 'dedup-metric-filter-presets'
+
+const DEFAULT_METRIC_PRESETS: [MetricFilterValues, MetricFilterValues] = [
+  {
+    minClicks: '',
+    maxClicks: '',
+    minPurch: '',
+    maxPurch: '3',
+    minAcos: '65',
+    maxAcos: '',
+    zeroSalesOnly: false,
+  },
+  {
+    minClicks: '15',
+    maxClicks: '',
+    minPurch: '',
+    maxPurch: '',
+    minAcos: '',
+    maxAcos: '',
+    zeroSalesOnly: true,
+  },
+]
+
+const EMPTY_METRIC_FILTER_VALUES: MetricFilterValues = {
+  minClicks: '',
+  maxClicks: '',
+  minPurch: '',
+  maxPurch: '',
+  minAcos: '',
+  maxAcos: '',
+  zeroSalesOnly: false,
+}
+
+type MetricPresetModeKey = 'duplicates' | 'nonDuplicates'
+
+interface MetricPresetModeState {
+  presets: [MetricFilterValues, MetricFilterValues]
+  activePreset: 0 | 1 | null
+}
+
+interface StoredMetricPresetsByMode {
+  duplicates: MetricPresetModeState
+  nonDuplicates: MetricPresetModeState
+}
+
+function cloneDefaultPresets(): [MetricFilterValues, MetricFilterValues] {
+  return [{ ...DEFAULT_METRIC_PRESETS[0] }, { ...DEFAULT_METRIC_PRESETS[1] }]
+}
+
+function defaultMetricPresetModeState(): MetricPresetModeState {
+  return {
+    presets: cloneDefaultPresets(),
+    activePreset: null,
+  }
+}
+
+function isMetricPresetModeState(v: unknown): v is MetricPresetModeState {
+  if (typeof v !== 'object' || v === null) return false
+  const o = v as Record<string, unknown>
+  const presets = o.presets
+  return (
+    Array.isArray(presets) &&
+    presets.length === 2 &&
+    isMetricFilterValues(presets[0]) &&
+    isMetricFilterValues(presets[1]) &&
+    (o.activePreset === null || o.activePreset === 0 || o.activePreset === 1)
+  )
+}
+
+function isStoredMetricPresetsByMode(v: unknown): v is StoredMetricPresetsByMode {
+  if (typeof v !== 'object' || v === null) return false
+  const o = v as Record<string, unknown>
+  return isMetricPresetModeState(o.duplicates) && isMetricPresetModeState(o.nonDuplicates)
+}
+
+function loadMetricPresetsByMode(): StoredMetricPresetsByMode {
+  const defaults: StoredMetricPresetsByMode = {
+    duplicates: defaultMetricPresetModeState(),
+    nonDuplicates: defaultMetricPresetModeState(),
+  }
+  try {
+    const rawV2 = localStorage.getItem(METRIC_PRESETS_STORAGE_KEY)
+    if (rawV2) {
+      const parsed = JSON.parse(rawV2) as unknown
+      if (isStoredMetricPresetsByMode(parsed)) return parsed
+    }
+    const rawV1 = localStorage.getItem(LEGACY_METRIC_PRESETS_STORAGE_KEY)
+    if (rawV1) {
+      const parsed = JSON.parse(rawV1) as unknown
+      if (
+        Array.isArray(parsed) &&
+        parsed.length === 2 &&
+        isMetricFilterValues(parsed[0]) &&
+        isMetricFilterValues(parsed[1])
+      ) {
+        return {
+          duplicates: { presets: [parsed[0], parsed[1]], activePreset: null },
+          nonDuplicates: defaultMetricPresetModeState(),
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return defaults
+}
+
+function isMetricFilterValues(v: unknown): v is MetricFilterValues {
+  if (typeof v !== 'object' || v === null) return false
+  const o = v as Record<string, unknown>
+  return (
+    typeof o.minClicks === 'string' &&
+    typeof o.maxClicks === 'string' &&
+    typeof o.minPurch === 'string' &&
+    typeof o.maxPurch === 'string' &&
+    typeof o.minAcos === 'string' &&
+    typeof o.maxAcos === 'string' &&
+    typeof o.zeroSalesOnly === 'boolean'
+  )
+}
+
+function applyMetricFilterValues(values: MetricFilterValues, apply: {
+  setMinClicksInput: (v: string) => void
+  setMaxClicksInput: (v: string) => void
+  setMinPurchInput: (v: string) => void
+  setMaxPurchInput: (v: string) => void
+  setMinAcosInput: (v: string) => void
+  setMaxAcosInput: (v: string) => void
+  setZeroSalesOnly: (v: boolean) => void
+}) {
+  apply.setMinClicksInput(values.minClicks)
+  apply.setMaxClicksInput(values.maxClicks)
+  apply.setMinPurchInput(values.minPurch)
+  apply.setMaxPurchInput(values.maxPurch)
+  apply.setMinAcosInput(values.minAcos)
+  apply.setMaxAcosInput(values.maxAcos)
+  apply.setZeroSalesOnly(values.zeroSalesOnly)
+}
+
 function CopyableNormalizedTerm({ term }: { term: string }) {
   const [copied, setCopied] = useState(false)
 
@@ -632,27 +852,99 @@ function DupResultsTable({
   results,
   batchMode = false,
   withinFileMode = false,
+  nonDuplicatesOnly = false,
+  onNonDuplicatesOnlyChange,
   withinFileLabels = withinFileMatchLabels(undefined),
   onVisibleTermsChange,
 }: {
   results: DuplicateResult[]
   batchMode?: boolean
   withinFileMode?: boolean
+  nonDuplicatesOnly?: boolean
+  onNonDuplicatesOnlyChange?: (value: boolean) => void
   withinFileLabels?: ReturnType<typeof withinFileMatchLabels>
   onVisibleTermsChange?: (terms: string[]) => void
 }) {
+  const presetModeKey: MetricPresetModeKey =
+    withinFileMode && nonDuplicatesOnly ? 'nonDuplicates' : 'duplicates'
+  const [presetModes, setPresetModes] = useState(loadMetricPresetsByMode)
+  const initialMetricFilters = useMemo(() => {
+    const modeState = loadMetricPresetsByMode()[presetModeKey]
+    return modeState.activePreset !== null
+      ? modeState.presets[modeState.activePreset]
+      : EMPTY_METRIC_FILTER_VALUES
+  }, [presetModeKey])
   const [filterQuery, setFilterQuery] = useState('')
-  const [minClicksInput, setMinClicksInput] = useState('')
-  const [maxClicksInput, setMaxClicksInput] = useState('')
-  const [minPurchInput, setMinPurchInput] = useState('')
-  const [maxPurchInput, setMaxPurchInput] = useState('')
-  const [minAcosInput, setMinAcosInput] = useState('')
-  const [maxAcosInput, setMaxAcosInput] = useState('')
-  const [zeroSalesOnly, setZeroSalesOnly] = useState(false)
+  const [minClicksInput, setMinClicksInput] = useState(initialMetricFilters.minClicks)
+  const [maxClicksInput, setMaxClicksInput] = useState(initialMetricFilters.maxClicks)
+  const [minPurchInput, setMinPurchInput] = useState(initialMetricFilters.minPurch)
+  const [maxPurchInput, setMaxPurchInput] = useState(initialMetricFilters.maxPurch)
+  const [minAcosInput, setMinAcosInput] = useState(initialMetricFilters.minAcos)
+  const [maxAcosInput, setMaxAcosInput] = useState(initialMetricFilters.maxAcos)
+  const [zeroSalesOnly, setZeroSalesOnly] = useState(initialMetricFilters.zeroSalesOnly)
+  const metricPresets = presetModes[presetModeKey].presets
+  const activeMetricPreset = presetModes[presetModeKey].activePreset
   const [sort, setSort] = useState<{ key: DupSortKey; dir: DupSortDir }>({
-    key: 'count',
+    key: 'totalClicks',
     dir: 'desc',
   })
+  const [selectedTerms, setSelectedTerms] = useState<Set<string>>(new Set())
+  const [selectionCopyFeedback, setSelectionCopyFeedback] = useState(false)
+  const selectAllCheckRef = useRef<HTMLInputElement>(null)
+  const selectAllAfterPresetRef = useRef(false)
+  const [presetSelectNonce, setPresetSelectNonce] = useState(0)
+  const presetModesRef = useRef(presetModes)
+  const prevPresetModeKeyRef = useRef<MetricPresetModeKey | null>(null)
+
+  presetModesRef.current = presetModes
+
+  useEffect(() => {
+    setSelectedTerms(new Set())
+  }, [results])
+
+  useEffect(() => {
+    localStorage.setItem(METRIC_PRESETS_STORAGE_KEY, JSON.stringify(presetModes))
+  }, [presetModes])
+
+  useEffect(() => {
+    const prev = prevPresetModeKeyRef.current
+    prevPresetModeKeyRef.current = presetModeKey
+    if (prev !== null && prev === presetModeKey) return
+
+    const modeState = presetModesRef.current[presetModeKey]
+    const filterApply = {
+      setMinClicksInput,
+      setMaxClicksInput,
+      setMinPurchInput,
+      setMaxPurchInput,
+      setMinAcosInput,
+      setMaxAcosInput,
+      setZeroSalesOnly,
+    }
+    if (modeState.activePreset !== null) {
+      applyMetricFilterValues(modeState.presets[modeState.activePreset], filterApply)
+      selectAllAfterPresetRef.current = true
+      setPresetSelectNonce((n) => n + 1)
+    } else {
+      applyMetricFilterValues(EMPTY_METRIC_FILTER_VALUES, filterApply)
+    }
+  }, [presetModeKey])
+
+  const patchActivePreset = useCallback(
+    (patch: Partial<MetricFilterValues>) => {
+      if (activeMetricPreset === null) return
+      setPresetModes((prev) => {
+        const mode = prev[presetModeKey]
+        const nextPresets: [MetricFilterValues, MetricFilterValues] = [mode.presets[0], mode.presets[1]]
+        nextPresets[activeMetricPreset] = { ...nextPresets[activeMetricPreset], ...patch }
+        return {
+          ...prev,
+          [presetModeKey]: { ...mode, presets: nextPresets },
+        }
+      })
+    },
+    [activeMetricPreset, presetModeKey]
+  )
 
   const metricParsed = useMemo(
     () => ({
@@ -682,7 +974,7 @@ function DupResultsTable({
       )
     }
     if (zeroSalesOnly) {
-      list = list.filter((r) => dupTotalAttributedSales(r) === 0)
+      list = list.filter((r) => passesZeroSalesOnly(r))
     }
     return list
   }, [results, metricParsed, zeroSalesOnly])
@@ -714,6 +1006,63 @@ function DupResultsTable({
   useEffect(() => {
     onVisibleTermsChange?.(sorted.map((r) => r.normalizedTerm))
   }, [sorted, onVisibleTermsChange])
+
+  const visibleSelectedCount = useMemo(
+    () => sorted.filter((r) => selectedTerms.has(r.normalizedTerm)).length,
+    [sorted, selectedTerms]
+  )
+
+  useEffect(() => {
+    const el = selectAllCheckRef.current
+    if (!el) return
+    el.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < sorted.length
+  }, [visibleSelectedCount, sorted.length])
+
+  useEffect(() => {
+    const visibleTerms = new Set(sorted.map((r) => r.normalizedTerm))
+    setSelectedTerms((prev) => {
+      if (prev.size === 0) return prev
+      const next = new Set([...prev].filter((term) => visibleTerms.has(term)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [sorted])
+
+  useEffect(() => {
+    if (!selectAllAfterPresetRef.current) return
+    selectAllAfterPresetRef.current = false
+    setSelectedTerms(new Set(sorted.map((r) => r.normalizedTerm)))
+  }, [sorted, presetSelectNonce])
+
+  const toggleTermSelection = useCallback((term: string) => {
+    setSelectedTerms((prev) => {
+      const next = new Set(prev)
+      if (next.has(term)) next.delete(term)
+      else next.add(term)
+      return next
+    })
+  }, [])
+
+  const toggleAllVisible = useCallback(() => {
+    setSelectedTerms((prev) => {
+      const allVisibleSelected =
+        sorted.length > 0 && sorted.every((r) => prev.has(r.normalizedTerm))
+      if (allVisibleSelected) {
+        const next = new Set(prev)
+        for (const r of sorted) next.delete(r.normalizedTerm)
+        return next
+      }
+      return new Set(sorted.map((r) => r.normalizedTerm))
+    })
+  }, [sorted])
+
+  const copySelectedTerms = useCallback(() => {
+    const selected = sorted.filter((r) => selectedTerms.has(r.normalizedTerm))
+    const text = selected.map((r) => r.normalizedTerm).join('\n')
+    void navigator.clipboard.writeText(text).then(() => {
+      setSelectionCopyFeedback(true)
+      window.setTimeout(() => setSelectionCopyFeedback(false), 2000)
+    })
+  }, [sorted, selectedTerms])
 
   const SortTh = ({
     colKey,
@@ -751,6 +1100,28 @@ function DupResultsTable({
     )
   }
 
+  const applyMetricPreset = useCallback(
+    (index: 0 | 1) => {
+      const values = metricPresets[index]
+      applyMetricFilterValues(values, {
+        setMinClicksInput,
+        setMaxClicksInput,
+        setMinPurchInput,
+        setMaxPurchInput,
+        setMinAcosInput,
+        setMaxAcosInput,
+        setZeroSalesOnly,
+      })
+      setPresetModes((prev) => ({
+        ...prev,
+        [presetModeKey]: { ...prev[presetModeKey], activePreset: index },
+      }))
+      selectAllAfterPresetRef.current = true
+      setPresetSelectNonce((n) => n + 1)
+    },
+    [metricPresets, presetModeKey]
+  )
+
   const textFilterActive = filterQuery.trim().length > 0
   const metricFilterActive =
     minClicksInput.trim() !== '' ||
@@ -768,6 +1139,39 @@ function DupResultsTable({
         <div className="dedup-metric-filters__intro">
           Combined totals (applies to each keyword row — same logic in As is and batch mode)
         </div>
+        <div className="dedup-metric-filters__presets">
+          <button
+            type="button"
+            className={['btn', 'btn--small', activeMetricPreset === 0 ? 'btn--primary' : 'btn--secondary'].join(' ')}
+            onClick={() => applyMetricPreset(0)}
+          >
+            Preset 1
+          </button>
+          <button
+            type="button"
+            className={['btn', 'btn--small', activeMetricPreset === 1 ? 'btn--primary' : 'btn--secondary'].join(' ')}
+            onClick={() => applyMetricPreset(1)}
+          >
+            Preset 2
+          </button>
+          {withinFileMode && onNonDuplicatesOnlyChange && (
+            <label
+              className={[
+                'btn',
+                'dedup-metric-filters__non-dup',
+                nonDuplicatesOnly ? 'btn--primary' : 'btn--secondary',
+              ].join(' ')}
+            >
+              <input
+                type="checkbox"
+                className="sr-only"
+                checked={nonDuplicatesOnly}
+                onChange={(e) => onNonDuplicatesOnlyChange(e.target.checked)}
+              />
+              Non-duplicate terms only (one {withinFileLabels.singular} per search term)
+            </label>
+          )}
+        </div>
         <div className="dedup-metric-filters__grid">
           <label className="dedup-metric-filters__field">
             <span className="dedup-metric-filters__field-label">Min clicks</span>
@@ -777,7 +1181,11 @@ function DupResultsTable({
               className="dedup-metric-filters__input"
               placeholder="—"
               value={minClicksInput}
-              onChange={(e) => setMinClicksInput(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value
+                setMinClicksInput(v)
+                patchActivePreset({ minClicks: v })
+              }}
               autoComplete="off"
             />
           </label>
@@ -789,7 +1197,11 @@ function DupResultsTable({
               className="dedup-metric-filters__input"
               placeholder="—"
               value={maxClicksInput}
-              onChange={(e) => setMaxClicksInput(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value
+                setMaxClicksInput(v)
+                patchActivePreset({ maxClicks: v })
+              }}
               autoComplete="off"
             />
           </label>
@@ -801,7 +1213,11 @@ function DupResultsTable({
               className="dedup-metric-filters__input"
               placeholder="—"
               value={minPurchInput}
-              onChange={(e) => setMinPurchInput(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value
+                setMinPurchInput(v)
+                patchActivePreset({ minPurch: v })
+              }}
               autoComplete="off"
             />
           </label>
@@ -813,7 +1229,11 @@ function DupResultsTable({
               className="dedup-metric-filters__input"
               placeholder="—"
               value={maxPurchInput}
-              onChange={(e) => setMaxPurchInput(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value
+                setMaxPurchInput(v)
+                patchActivePreset({ maxPurch: v })
+              }}
               autoComplete="off"
             />
           </label>
@@ -825,7 +1245,11 @@ function DupResultsTable({
               className="dedup-metric-filters__input"
               placeholder="—"
               value={minAcosInput}
-              onChange={(e) => setMinAcosInput(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value
+                setMinAcosInput(v)
+                patchActivePreset({ minAcos: v })
+              }}
               autoComplete="off"
             />
           </label>
@@ -837,7 +1261,11 @@ function DupResultsTable({
               className="dedup-metric-filters__input"
               placeholder="—"
               value={maxAcosInput}
-              onChange={(e) => setMaxAcosInput(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value
+                setMaxAcosInput(v)
+                patchActivePreset({ maxAcos: v })
+              }}
               autoComplete="off"
             />
           </label>
@@ -847,14 +1275,18 @@ function DupResultsTable({
               <input
                 type="checkbox"
                 checked={zeroSalesOnly}
-                onChange={(e) => setZeroSalesOnly(e.target.checked)}
+                onChange={(e) => {
+                  const v = e.target.checked
+                  setZeroSalesOnly(v)
+                  patchActivePreset({ zeroSalesOnly: v })
+                }}
               />
               Zero sales only
             </span>
           </label>
         </div>
         <p className="dedup-metric-filters__hint">
-          Uses the combined row totals (all sources / all batches). ACOS filters apply only when blended ACOS exists. Zero sales uses combined attributed sales from your CSV. Leave fields blank to skip.
+          Uses the combined row totals (all sources / all batches). ACOS uses spend÷sales when your CSV has those columns, otherwise the report's own ACOS column (orders-weighted for combined rows). Zero sales excludes terms with any purchases/orders or attributed sales revenue. Leave fields blank to skip.
         </p>
       </div>
       <div className="dedup-table-filter" role="search">
@@ -882,6 +1314,17 @@ function DupResultsTable({
           </span>
         )}
       </div>
+      <div className="dedup-selection-actions">
+        <button
+          type="button"
+          className="btn btn--primary btn--small"
+          disabled={visibleSelectedCount === 0}
+          onClick={copySelectedTerms}
+        >
+          Copy selected{visibleSelectedCount > 0 ? ` (${visibleSelectedCount})` : ''}
+        </button>
+        {selectionCopyFeedback && <span className="feedback">Copied selected terms to clipboard.</span>}
+      </div>
       <div className="table-wrap table-wrap--sticky-header">
       <table className="results-table results-table--dedup-sort">
         <caption className="sr-only">
@@ -891,6 +1334,15 @@ function DupResultsTable({
         </caption>
         <thead>
           <tr>
+            <th scope="col" className="dedup-th-select">
+              <input
+                ref={selectAllCheckRef}
+                type="checkbox"
+                checked={sorted.length > 0 && visibleSelectedCount === sorted.length}
+                onChange={toggleAllVisible}
+                aria-label="Select all visible terms"
+              />
+            </th>
             <SortTh colKey="term">Normalized term</SortTh>
             <SortTh colKey="count" align="right">
               Count
@@ -921,6 +1373,14 @@ function DupResultsTable({
                   <tr key={camp}>
                     {i === 0 && (
                       <>
+                        <td rowSpan={span} className="dedup-td-select">
+                          <input
+                            type="checkbox"
+                            checked={selectedTerms.has(r.normalizedTerm)}
+                            onChange={() => toggleTermSelection(r.normalizedTerm)}
+                            aria-label={`Select ${r.normalizedTerm}`}
+                          />
+                        </td>
                         <td rowSpan={span} className="dedup-td-term">
                           <CopyableNormalizedTerm term={r.normalizedTerm} />
                         </td>
@@ -935,7 +1395,7 @@ function DupResultsTable({
                       {purch > 0 ? formatPurchaseCount(purch) : '—'}
                     </td>
                     <td className="dedup-td-num dedup-td-metric dedup-td-acos">
-                      {purch > 0 ? (acos != null ? formatAcosPct(acos) : '—') : '—'}
+                      {acos != null ? formatAcosPct(acos) : '—'}
                     </td>
                   </tr>
                 )

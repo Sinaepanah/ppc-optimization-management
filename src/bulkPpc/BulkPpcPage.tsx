@@ -3,6 +3,7 @@ import { Upload, Download, ChevronUp, ChevronDown } from 'lucide-react'
 import { parseKeywordCsv } from './utils/keywordCsvParser'
 import { optimizeBulk } from './utils/bulkOptimizer'
 import { NumberInputWithArrows } from '../ppcTool/components/NumberInputWithArrows'
+import { isSupportedTabularFile, readEncodedTextFile, TABULAR_UPLOAD_ACCEPT } from '../utils/readEncodedTextFile'
 import './BulkPpc.css'
 
 export function BulkPpcPage() {
@@ -25,31 +26,39 @@ export function BulkPpcPage() {
   const parsed = parseResult.result
   const displayError = parseResult.error ?? fileError
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      setCsvText(String(reader.result ?? ''))
+    if (!isSupportedTabularFile(file)) {
+      setFileError('Please select a CSV or Excel file')
+      e.target.value = ''
+      return
+    }
+    try {
+      const text = await readEncodedTextFile(file)
+      setCsvText(text)
       setFileName(file.name)
       setFileError(null)
+    } catch {
+      setFileError('Failed to read file')
     }
-    reader.onerror = () => setFileError('Failed to read file')
-    reader.readAsText(file, 'UTF-8')
     e.target.value = ''
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
     const file = e.dataTransfer.files[0]
-    if (file?.name.endsWith('.csv') || file?.type === 'text/csv' || file?.type === 'application/csv') {
-      const reader = new FileReader()
-      reader.onload = () => {
-        setCsvText(String(reader.result ?? ''))
+    if (file && isSupportedTabularFile(file)) {
+      try {
+        const text = await readEncodedTextFile(file)
+        setCsvText(text)
         setFileName(file.name)
         setFileError(null)
+      } catch {
+        setFileError('Failed to read file')
       }
-      reader.readAsText(file, 'UTF-8')
+    } else if (file) {
+      setFileError('Please drop a CSV or Excel file')
     }
   }, [])
 
@@ -138,7 +147,7 @@ export function BulkPpcPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,text/csv,application/csv"
+            accept={TABULAR_UPLOAD_ACCEPT}
             onChange={handleFileChange}
             className="bulk-ppc-upload-input"
           />

@@ -51,11 +51,13 @@ export function BracketKeywordCopyTable({
       {embedded ? <h4 className="auto-exact-bracket-copy-title">Copy lines</h4> : <h3>Exact keywords in brackets</h3>}
       <p className="muted auto-exact-bracket-sub">
         {useCampaignFormat
-          ? 'Campaign title format for each selected Promote to Exact row.'
-          : 'Bracket format for each selected Promote to Exact row.'}
+          ? 'Campaign title format for each line (Promote selections and checked manual keywords not in reference).'
+          : 'Bracket format for each line (Promote selections and checked manual keywords not in reference).'}
       </p>
       {selectedTerms.length === 0 ? (
-        <p className="muted">Select one or more rows in the Promote to Exact table below.</p>
+        <p className="muted">
+          Select rows in the Promote to Exact table below and/or check <strong>No</strong> manual keywords above.
+        </p>
       ) : (
         <div className="table-wrap table-wrap--compact">
           <table className="results-table results-table--compact auto-exact-bracket-table">

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { TopicProfile } from '../types'
+import type { TopicProfile, Campaign } from '../types'
 import {
   aggregateByNormalizedTerm,
   oneRowPerCsvRow,
   type SearchTermAggregateScope,
 } from './utils/aggregation'
-import { getHeaderSuggestions } from './utils/csvHelpers'
+import { getHeaderSuggestions, mergeSourceCsvRows } from './utils/csvHelpers'
 import { getPromoteList, getReviewQueue, runScoring } from './utils/scoring'
 import type { ColumnMapping, PromotionCriteria, ScoredTerm } from './types'
 import { DEFAULT_COLUMN_MAPPING, DEFAULT_CRITERIA } from './types'
@@ -23,10 +23,15 @@ import {
   manualExactKeywordSegmentsFromLines,
   normalizeCampaignNameForMatch,
   type ReferenceExactResult,
+  loadPersistedReferenceExact,
+  savePersistedReferenceExact,
+  clearPersistedReferenceExact,
 } from './utils/referenceExact'
+import { campaignHasSourceData, resolveCampaignSourceRows } from './utils/campaignSourceRows'
 
 interface AutoExactPageProps {
   profiles: TopicProfile[]
+  campaigns: Campaign[]
 }
 
 const CUSTOM_MANUAL_KEYWORDS_LABEL = 'CUSTOM MANUAL KEYWORDS'
@@ -68,6 +73,7 @@ function mergeCsvRowsWithManualLines(
     mapping.matchType,
     mapping.targeting,
     mapping.roas,
+    mapping.acos,
   ]
   for (const idx of idxs) {
     if (idx >= 0) w = Math.max(w, idx + 1)
@@ -108,28 +114,49 @@ function scoredStubForManualExport(originalTerm: string, normalizedTerm: string)
   }
 }
 
-export function AutoExactPage({ profiles }: AutoExactPageProps) {
+export function AutoExactPage({ profiles, campaigns }: AutoExactPageProps) {
   const [rows, setRows] = useState<string[][]>([])
   const [hasHeader, setHasHeader] = useState(true)
   const [mapping, setMapping] = useState<ColumnMapping>(DEFAULT_COLUMN_MAPPING)
   const [criteria, setCriteria] = useState<PromotionCriteria>(DEFAULT_CRITERIA)
   const [wrapInBrackets, setWrapInBrackets] = useState(false)
-  const [aggregateByTerm, setAggregateByTerm] = useState(false)
+  const [aggregateByTerm, setAggregateByTerm] = useState(true)
   const [aggregateScope, setAggregateScope] = useState<SearchTermAggregateScope>('across_campaigns')
   const [selectedPromoteIndices, setSelectedPromoteIndices] = useState<Set<number>>(new Set())
   const [intent, setIntent] = useState('')
   const [asin, setAsin] = useState('')
   const [targetAcosForCpc, setTargetAcosForCpc] = useState(37)
-  const [referenceExactData, setReferenceExactData] = useState<ReferenceExactResult | null>(null)
+  const persistedReferenceExact = useRef(loadPersistedReferenceExact())
+  const [referenceExactData, setReferenceExactData] = useState<ReferenceExactResult | null>(
+    () => persistedReferenceExact.current?.result ?? null
+  )
+  const [referenceExactFileName, setReferenceExactFileName] = useState(
+    () => persistedReferenceExact.current?.fileName ?? ''
+  )
   const [hideAlreadyExact, setHideAlreadyExact] = useState(false)
   const [analyzed, setAnalyzed] = useState(false)
   const [sourceCsvNames, setSourceCsvNames] = useState<string[]>([])
+  const [selectedCampaignIds, setSelectedCampaignIds] = useState<Set<string>>(new Set())
   const [manualKeywordText, setManualKeywordText] = useState('')
   const [includePhrase, setIncludePhrase] = useState('')
   const [excludePhrase, setExcludePhrase] = useState('')
   const [selectedManualNotInRefIndices, setSelectedManualNotInRefIndices] = useState<Set<number>>(new Set())
   const prevHadCsvRows = useRef(false)
   const prevManualNonEmpty = useRef(false)
+  const userDeselectedCampaignIds = useRef(new Set<string>())
+  const resultsRef = useRef<HTMLDivElement>(null)
+
+  const handleReferenceExactLoaded = useCallback((data: ReferenceExactResult, fileName: string) => {
+    setReferenceExactData(data)
+    setReferenceExactFileName(fileName)
+    savePersistedReferenceExact(data, fileName)
+  }, [])
+
+  const handleReferenceExactClear = useCallback(() => {
+    setReferenceExactData(null)
+    setReferenceExactFileName('')
+    clearPersistedReferenceExact()
+  }, [])
 
   const handleRowsLoaded = useCallback(
     (newRows: string[][], firstRowIsHeader: boolean, meta?: { sourceFileNames?: string[] }) => {
@@ -149,6 +176,80 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
     []
   )
 
+  const selectedCampaignIdsKey = useMemo(
+    () => [...selectedCampaignIds].sort().join(','),
+    [selectedCampaignIds]
+  )
+
+  const fileSourceNamesKey = sourceCsvNames.join('\u0001')
+
+  const rowsWithCampaigns = useMemo(() => {
+    const campaignParts = campaigns
+      .filter((c) => selectedCampaignIds.has(c.id))
+      .map((c) => resolveCampaignSourceRows(c))
+      .filter((part): part is string[][] => part != null && part.length > 0)
+    const parts: string[][][] = []
+    if (rows.length > 0) parts.push(rows)
+    for (const campaignRows of campaignParts) parts.push(campaignRows)
+    if (parts.length === 0) return []
+    return mergeSourceCsvRows(parts)
+  }, [rows, campaigns, selectedCampaignIdsKey, selectedCampaignIds])
+
+  const allSourceNames = useMemo(() => {
+    const fromCampaigns = campaigns.filter((c) => selectedCampaignIds.has(c.id)).map((c) => c.name)
+    return [...sourceCsvNames, ...fromCampaigns]
+  }, [sourceCsvNames, campaigns, selectedCampaignIds])
+
+  useEffect(() => {
+    const selectable = campaigns.filter((c) => campaignHasSourceData(c))
+    setSelectedCampaignIds((prev) => {
+      const next = new Set<string>()
+      for (const c of selectable) {
+        if (!userDeselectedCampaignIds.current.has(c.id)) next.add(c.id)
+      }
+      if (next.size === prev.size && [...next].every((id) => prev.has(id))) return prev
+      return next
+    })
+  }, [campaigns])
+
+  const handleSelectedCampaignIdsChange = useCallback(
+    (ids: Set<string>) => {
+      const selectable = campaigns.filter((c) => campaignHasSourceData(c))
+      userDeselectedCampaignIds.current = new Set(
+        selectable.filter((c) => !ids.has(c.id)).map((c) => c.id)
+      )
+      setSelectedCampaignIds(ids)
+    },
+    [campaigns]
+  )
+
+  const toggleCampaignSource = useCallback((id: string) => {
+    setSelectedCampaignIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+        userDeselectedCampaignIds.current.add(id)
+      } else {
+        next.add(id)
+        userDeselectedCampaignIds.current.delete(id)
+      }
+      return next
+    })
+  }, [])
+
+  const selectAllCampaignSources = useCallback(() => {
+    const selectable = campaigns.filter((c) => campaignHasSourceData(c))
+    const allSelected =
+      selectable.length > 0 && selectable.every((c) => selectedCampaignIds.has(c.id))
+    if (allSelected) {
+      for (const c of selectable) userDeselectedCampaignIds.current.add(c.id)
+      setSelectedCampaignIds(new Set())
+      return
+    }
+    userDeselectedCampaignIds.current.clear()
+    setSelectedCampaignIds(new Set(selectable.map((c) => c.id)))
+  }, [campaigns, selectedCampaignIds])
+
   const manualLinesRaw = useMemo(
     () => manualKeywordText.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
     [manualKeywordText]
@@ -160,8 +261,8 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   )
 
   const effectiveRows = useMemo(
-    () => mergeCsvRowsWithManualLines(rows, manualKeywordSegments, mapping),
-    [rows, manualKeywordSegments, mapping]
+    () => mergeCsvRowsWithManualLines(rowsWithCampaigns, manualKeywordSegments, mapping),
+    [rowsWithCampaigns, manualKeywordSegments, mapping]
   )
 
   const effectiveRowsWithoutReferenceCampaigns = useMemo(() => {
@@ -181,21 +282,33 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
   }, [effectiveRows, mapping.campaignName, referenceExactData?.campaignNamesInReference])
 
   useEffect(() => {
-    const csvEmpty = rows.length === 0
+    const csvEmpty = rowsWithCampaigns.length === 0
     const manualNonEmpty = manualKeywordSegments.length > 0
     if (csvEmpty && manualNonEmpty) {
       const syn = buildSyntheticManualOnlyRows(manualKeywordSegments)
       const shouldApply =
         (!prevManualNonEmpty.current && manualNonEmpty) ||
-        (prevHadCsvRows.current && rows.length === 0)
+        (prevHadCsvRows.current && rowsWithCampaigns.length === 0)
       if (shouldApply) {
         setMapping(getHeaderSuggestions(syn))
         setHasHeader(true)
       }
     }
-    prevHadCsvRows.current = rows.length > 0
+    prevHadCsvRows.current = rowsWithCampaigns.length > 0
     prevManualNonEmpty.current = manualNonEmpty
-  }, [rows.length, manualKeywordSegments])
+  }, [rowsWithCampaigns.length, manualKeywordSegments])
+
+  useEffect(() => {
+    if (rowsWithCampaigns.length === 0) return
+    setMapping(getHeaderSuggestions(rowsWithCampaigns))
+    setHasHeader(true)
+    setAnalyzed(false)
+    const sourceCount = sourceCsvNames.length + selectedCampaignIds.size
+    if (sourceCount > 1) {
+      setAggregateByTerm(true)
+      setAggregateScope('across_campaigns')
+    }
+  }, [selectedCampaignIdsKey, fileSourceNamesKey, rows.length, rowsWithCampaigns.length])
 
   useEffect(() => {
     setAnalyzed(false)
@@ -305,13 +418,21 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
       <div className="auto-exact-page-top">
         <Uploader
           currentRows={rows}
-          sourceCsvNames={sourceCsvNames}
+          fileSourceNames={sourceCsvNames}
+          allSourceNames={allSourceNames}
           onRowsLoaded={handleRowsLoaded}
+          campaigns={campaigns}
+          selectedCampaignIds={selectedCampaignIds}
+          onSelectedCampaignIdsChange={handleSelectedCampaignIdsChange}
+          onToggleCampaignSource={toggleCampaignSource}
+          onSelectAllCampaignSources={selectAllCampaignSources}
           manualKeywordText={manualKeywordText}
           onManualKeywordTextChange={setManualKeywordText}
         />
         <ReferenceExactUploader
-          onDataLoaded={setReferenceExactData}
+          onDataLoaded={handleReferenceExactLoaded}
+          onClear={handleReferenceExactClear}
+          fileName={referenceExactFileName}
           campaignRowCount={referenceExactData?.campaignRowCount ?? 0}
           uniqueKeywordCount={referenceTargetCount}
           referenceFormat={referenceExactData?.referenceFormat}
@@ -404,10 +525,20 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
             {!canAnalyze && missingRequired.length > 0 && (
               <span className="muted"> Map required columns (Search Term, Spend, Sales, Orders) first.</span>
             )}
+            {!canAnalyze &&
+              missingRequired.length === 0 &&
+              hasAnySourceRows &&
+              !hasAnySourceRowsAfterReferenceFilter && (
+                <span className="muted">
+                  {' '}
+                  All input rows were excluded because their campaign names match campaigns in your Reference Exact
+                  CSV. Upload Broad/Phrase search-term data, or clear the reference file.
+                </span>
+              )}
           </div>
 
           {analyzed && (
-            <>
+            <div ref={resultsRef}>
               <ExportButtons
                 wrapInBrackets={wrapInBrackets}
                 onWrapInBracketsChange={setWrapInBrackets}
@@ -457,7 +588,7 @@ export function AutoExactPage({ profiles }: AutoExactPageProps) {
                 referenceExactMetrics={referenceExactData?.metricsByKeyword ?? null}
                 referenceExportAsin={asin}
               />
-            </>
+            </div>
           )}
         </>
       )}

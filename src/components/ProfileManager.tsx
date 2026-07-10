@@ -103,42 +103,7 @@ export function ProfileManager({
       onSubmit={(e) => e.preventDefault()}
       aria-label="Topic profile settings"
     >
-      <p className="panel-desc profile-manager__intro">
-        Define allowed and excluded topics for relevancy filtering. Each topic has include phrases (word-boundary match) and optional exclude phrases.
-        Start from a preset or create an empty profile. Any profile can be edited after loading.
-      </p>
-
       <div className="profile-manager__unified-grid">
-        <div className="profile-manager__toolbar profile-manager__toolbar--inline">
-          <div className="profile-manager__preset">
-            <label htmlFor="preset-select">Load preset</label>
-            <select
-              id="preset-select"
-              value={selectedPresetId}
-              onChange={(e) => setSelectedPresetId(e.target.value as PresetId)}
-            >
-              {PRESET_OPTIONS.map((opt) => (
-                <option key={opt.id} value={opt.id}>{opt.label}</option>
-              ))}
-            </select>
-            <button type="button" className="btn btn--primary" onClick={handleLoadPreset}>
-              Load
-            </button>
-          </div>
-          <div className="profile-manager__new">
-            <input
-              type="text"
-              value={newProfileName}
-              onChange={(e) => setNewProfileName(e.target.value)}
-              placeholder="New profile name"
-              aria-label="New profile name"
-            />
-            <button type="button" className="btn btn--primary" onClick={handleAddProfile}>
-              Create
-            </button>
-          </div>
-        </div>
-
         <div className="profile-manager__select profile-manager__select--inline">
           <label>
             Active profile
@@ -170,24 +135,56 @@ export function ProfileManager({
               >
                 Delete
               </button>
+              <div className="profile-manager__min profile-manager__min--inline">
+                <label>
+                  Minimum allowed topic matches
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={activeProfile.minimumAllowedMatches}
+                    onChange={(e) => handleMinAllowedChange(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                  />
+                </label>
+              </div>
             </>
           )}
         </div>
 
-        {activeProfile && (
-          <div className="profile-manager__min profile-manager__min--inline">
-            <label>
-              Minimum allowed topic matches
-              <input
-                type="number"
-                min={1}
-                max={10}
-                value={activeProfile.minimumAllowedMatches}
-                onChange={(e) => handleMinAllowedChange(Math.max(1, parseInt(e.target.value, 10) || 1))}
-              />
-            </label>
+        <details className="profile-manager__topics-accordion">
+          <summary className="profile-manager__topics-summary">Load preset</summary>
+          <div className="profile-manager__topics-body">
+            <div className="profile-manager__toolbar profile-manager__toolbar--inline">
+              <div className="profile-manager__preset">
+                <label htmlFor="preset-select" className="sr-only">Load preset</label>
+                <select
+                  id="preset-select"
+                  value={selectedPresetId}
+                  onChange={(e) => setSelectedPresetId(e.target.value as PresetId)}
+                >
+                  {PRESET_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>{opt.label}</option>
+                  ))}
+                </select>
+                <button type="button" className="btn btn--primary" onClick={handleLoadPreset}>
+                  Load
+                </button>
+              </div>
+              <div className="profile-manager__new">
+                <input
+                  type="text"
+                  value={newProfileName}
+                  onChange={(e) => setNewProfileName(e.target.value)}
+                  placeholder="New profile name"
+                  aria-label="New profile name"
+                />
+                <button type="button" className="btn btn--primary" onClick={handleAddProfile}>
+                  Create
+                </button>
+              </div>
+            </div>
           </div>
-        )}
+        </details>
       </div>
 
       {activeProfile && (

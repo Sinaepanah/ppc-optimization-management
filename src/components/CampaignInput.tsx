@@ -9,6 +9,7 @@ import {
 } from '../utils/csv'
 import { readEncodedTextFile } from '../utils/readEncodedTextFile'
 import { buildCampaignFromSearchTermRows } from '../utils/deduplication'
+import { setStoredCampaignSourceRows, removeStoredCampaignSourceRows } from '../utils/storage'
 import { CSVColumnSelector } from './CSVColumnSelector'
 
 interface CampaignInputProps {
@@ -84,7 +85,11 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
     const firstHeaderRow = findSearchTermReportHeaderRow(pendingFiles[0]!.rows)
     const refHeader = pendingFiles[0]!.rows[firstHeaderRow] ?? pendingFiles[0]!.rows[0] ?? []
 
-    const toAdd: { built: ReturnType<typeof buildCampaignFromSearchTermRows>; name: string }[] = []
+    const toAdd: {
+      built: ReturnType<typeof buildCampaignFromSearchTermRows>
+      name: string
+      sourceRows: string[][]
+    }[] = []
     pendingFiles.forEach((pf, idx) => {
       const termCol = resolveTermColumnForFile(pf.rows, refHeader, col)
       const built = buildCampaignFromSearchTermRows(pf.rows, termCol)
@@ -92,6 +97,7 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
       toAdd.push({
         built,
         name: buildCampaignName(pf.fileName, idx, batch, name, existingCount),
+        sourceRows: pf.rows,
       })
     })
 
@@ -103,12 +109,15 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
     }
 
     onCampaignsChange((prev) => {
-      let next = [...prev]
-      for (const { built, name: cName } of toAdd) {
+      const next = [...prev]
+      for (const { built, name: cName, sourceRows } of toAdd) {
+        const id = generateId()
+        setStoredCampaignSourceRows(id, sourceRows)
         next.push({
           ...built,
-          id: generateId(),
+          id,
           name: cName,
+          sourceRows,
         })
       }
       return next
@@ -122,14 +131,16 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
 
   const removeCampaign = useCallback(
     (id: string) => {
+      removeStoredCampaignSourceRows(id)
       onCampaignsChange((prev) => prev.filter((c) => c.id !== id))
     },
     [onCampaignsChange]
   )
 
   const removeAllCampaigns = useCallback(() => {
+    for (const c of campaigns) removeStoredCampaignSourceRows(c.id)
     onCampaignsChange([])
-  }, [onCampaignsChange])
+  }, [campaigns, onCampaignsChange])
 
   return (
     <section className="panel campaign-input">

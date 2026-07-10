@@ -8,6 +8,14 @@ interface RelevancyFilterPanelProps {
   profile: TopicProfile | null
 }
 
+function getTermAttributedSales(campaigns: Campaign[], normalizedTerm: string): number {
+  let total = 0
+  for (const c of campaigns) {
+    total += c.normalizedToAttributedSales?.get(normalizedTerm) ?? 0
+  }
+  return total
+}
+
 /** Merge terms from several campaigns; first occurrence wins for display original when normalized duplicates. */
 function mergeCampaignTerms(selected: Campaign[]): Array<{ original: string; normalized: string }> {
   const seen = new Set<string>()
@@ -29,6 +37,7 @@ export function RelevancyFilterPanel({ campaigns, profile }: RelevancyFilterPane
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([])
   const [searchFilter, setSearchFilter] = useState('')
   const [sortBy, setSortBy] = useState<'alpha' | 'reason'>('alpha')
+  const [zeroSalesOnly, setZeroSalesOnly] = useState(true)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('plain')
   const [copyFeedback, setCopyFeedback] = useState(false)
 
@@ -85,8 +94,15 @@ export function RelevancyFilterPanel({ campaigns, profile }: RelevancyFilterPane
     [results]
   )
 
+  const salesFilteredTerms = useMemo(() => {
+    return termsToNegate.filter((r) => {
+      const sales = getTermAttributedSales(selectedCampaigns, r.normalizedTerm)
+      return zeroSalesOnly ? sales === 0 : sales > 0
+    })
+  }, [termsToNegate, selectedCampaigns, zeroSalesOnly])
+
   const filteredResults = useMemo(() => {
-    let list = termsToNegate
+    let list = salesFilteredTerms
     const q = searchFilter.trim().toLowerCase()
     if (q) list = list.filter((r) => r.originalTerm.toLowerCase().includes(q) || r.normalizedTerm.toLowerCase().includes(q))
     if (sortBy === 'alpha') {
@@ -95,11 +111,11 @@ export function RelevancyFilterPanel({ campaigns, profile }: RelevancyFilterPane
       list = [...list].sort((a, b) => a.reason.localeCompare(b.reason))
     }
     return list
-  }, [termsToNegate, searchFilter, sortBy])
+  }, [salesFilteredTerms, searchFilter, sortBy])
 
   const flaggedTerms = useMemo(
-    () => termsToNegate.map((r) => r.originalTerm),
-    [termsToNegate]
+    () => salesFilteredTerms.map((r) => r.originalTerm),
+    [salesFilteredTerms]
   )
 
   const showCopyFeedback = useCallback(() => {
@@ -160,9 +176,6 @@ export function RelevancyFilterPanel({ campaigns, profile }: RelevancyFilterPane
                     <span className="relevancy-report__count"> ({flaggedTerms.length} terms)</span>
                   )}
                 </h3>
-                <p className="relevancy-report__desc">
-                  These terms matched an excluded topic (e.g. drinking water, pool). Copy and paste into your Amazon campaign as negative keywords.
-                </p>
 
                 <div className="relevancy-report__copy">
                   <ExportControls
@@ -187,6 +200,23 @@ export function RelevancyFilterPanel({ campaigns, profile }: RelevancyFilterPane
                     className="relevancy-controls__search"
                   />
                   <span className="relevancy-controls__sort">
+                    Sales:{' '}
+                    <button
+                      type="button"
+                      className={`btn btn--small ${zeroSalesOnly ? 'btn--primary' : 'btn--secondary'}`}
+                      onClick={() => setZeroSalesOnly(true)}
+                    >
+                      Zero sales
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn--small ${!zeroSalesOnly ? 'btn--primary' : 'btn--secondary'}`}
+                      onClick={() => setZeroSalesOnly(false)}
+                    >
+                      With sales
+                    </button>
+                  </span>
+                  <span className="relevancy-controls__sort">
                     Sort:{' '}
                     <button type="button" className="btn btn--small btn--secondary" onClick={() => setSortBy('alpha')}>A–Z</button>
                     <button type="button" className="btn btn--small btn--secondary" onClick={() => setSortBy('reason')}>By reason</button>
@@ -197,13 +227,12 @@ export function RelevancyFilterPanel({ campaigns, profile }: RelevancyFilterPane
               <RelevancyResultsTable
                 results={filteredResults}
                 totalToNegate={termsToNegate.length}
+                salesFilteredTotal={salesFilteredTerms.length}
+                zeroSalesOnly={zeroSalesOnly}
               />
             </>
           )}
 
-          {selectedCampaignIds.length === 0 && campaigns.length > 0 && (
-            <p className="muted">Select one or more campaigns above to run the relevancy filter.</p>
-          )}
         </>
       )}
     </section>
@@ -213,9 +242,13 @@ export function RelevancyFilterPanel({ campaigns, profile }: RelevancyFilterPane
 function RelevancyResultsTable({
   results,
   totalToNegate,
+  salesFilteredTotal,
+  zeroSalesOnly,
 }: {
   results: RelevancyResult[]
   totalToNegate: number
+  salesFilteredTotal: number
+  zeroSalesOnly: boolean
 }) {
   return (
     <div className="table-wrap">
@@ -241,7 +274,11 @@ function RelevancyResultsTable({
         <p className="muted">
           {totalToNegate === 0
             ? 'No keywords to negate. All terms are relevant to this profile (none matched excluded topics).'
-            : 'No keywords match your search.'}
+            : salesFilteredTotal === 0
+              ? zeroSalesOnly
+                ? 'No flagged keywords with zero sales.'
+                : 'No flagged keywords with sales.'
+              : 'No keywords match your search.'}
         </p>
       )}
     </div>

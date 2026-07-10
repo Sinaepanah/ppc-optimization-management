@@ -16,6 +16,8 @@ export interface ColumnMapping {
   targeting: number
   /** Amazon Search Term report: ROAS column when present (-1 = not mapped; still derive from Sales/Spend for display). */
   roas: number
+  /** ACoS column for deriving Sales when revenue column is absent (-1 = not mapped). */
+  acos: number
 }
 
 /** Parsed row with typed metrics (after mapping) */
@@ -96,10 +98,11 @@ export const DEFAULT_COLUMN_MAPPING: ColumnMapping = {
   matchType: -1,
   targeting: -1,
   roas: -1,
+  acos: -1,
 }
 
 export const DEFAULT_CRITERIA: PromotionCriteria = {
-  minOrders: 1,
+  minOrders: 3,
   minSales: 10,
   maxACoS: 200,
   minClicksEnabled: false,

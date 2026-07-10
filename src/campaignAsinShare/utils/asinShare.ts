@@ -42,6 +42,74 @@ export interface AsinAggregate {
   rawRows: AsinRow[]
 }
 
+function normalizeHeader(header: string): string {
+  return (header ?? '').trim().toLowerCase()
+}
+
+function isNumericMetricValue(raw: string): boolean {
+  if (raw == null) return false
+  const s = String(raw).trim()
+  if (!s) return false
+  if (/^[-–—]+$|^n\/?a$/i.test(s)) return true
+  return /[-+]?\d/.test(s)
+}
+
+function isAcosHeader(h: string): boolean {
+  const n = normalizeHeader(h)
+  return /\bacos\b|advertising cost of sales/i.test(n)
+}
+
+function isRoasHeader(h: string): boolean {
+  const n = normalizeHeader(h)
+  return /\broas\b|return on ad spend/i.test(n)
+}
+
+function isCtrHeader(h: string): boolean {
+  const n = normalizeHeader(h)
+  return /\bctr\b|click.?through.?rate/i.test(n)
+}
+
+function isCpcHeader(h: string): boolean {
+  const n = normalizeHeader(h)
+  return /\bcpc\b|cost per click/i.test(n)
+}
+
+function isSpendHeader(h: string): boolean {
+  const n = normalizeHeader(h)
+  return /\b(total\s*)?(spend|cost)\b/i.test(n) && !isCpcHeader(n) && !isAcosHeader(n)
+}
+
+function isSalesHeader(h: string): boolean {
+  const n = normalizeHeader(h)
+  return /\bsales?\b/i.test(n) && !isAcosHeader(n)
+}
+
+function isClicksHeader(h: string): boolean {
+  const n = normalizeHeader(h)
+  return /\bclicks?\b/i.test(n) && !isCtrHeader(n) && !isCpcHeader(n)
+}
+
+function isImpressionsHeader(h: string): boolean {
+  const n = normalizeHeader(h)
+  return /\bimpressions?\b/i.test(n)
+}
+
+function isOrderHeader(h: string): boolean {
+  const n = normalizeHeader(h)
+  return /\bpurchases?\b|\borders?\b|\bunits?\s*ordered\b/i.test(n)
+}
+
+function isConversionRateHeader(h: string): boolean {
+  const n = normalizeHeader(h)
+  return /\bconversion\b|\bcvr\b/.test(n)
+}
+
+function pickPreferredHeader(headers: string[], predicate: (h: string) => boolean): string | null {
+  const converted = headers.find((h) => predicate(h) && /\(converted\)/i.test(h))
+  if (converted) return converted
+  return headers.find(predicate) ?? null
+}
+
 /**
  * Parse Reference Exact CSV and return rows with extracted ASIN and all columns.
  */
@@ -73,10 +141,24 @@ export function parseExactCsvWithAsin(csvText: string): { headers: string[]; row
 
 function parseNum(val: string): number {
   if (val == null || val === '') return 0
-  // Remove $ % and thousand separators (comma, space)
-  const cleaned = String(val).replace(/[$,%\s]/g, '')
+  // Remove currency/percent symbols and common thousand separators.
+  const cleaned = String(val).replace(/[$,%\s,]/g, '')
   const n = parseFloat(cleaned)
   return Number.isFinite(n) ? n : 0
+}
+
+function averageMetricFromRows(rows: AsinRow[], header: string, excludeZero = false): number | null {
+  let sum = 0
+  let count = 0
+  for (const row of rows) {
+    const v = parseNum(row.raw[header] ?? '')
+    if (!Number.isFinite(v)) continue
+    if (excludeZero && v <= 0) continue
+    sum += v
+    count += 1
+  }
+  if (count === 0) return null
+  return sum / count
 }
 
 /**
@@ -99,10 +181,47 @@ export function aggregateByAsin(rows: AsinRow[], headers: string[]): AsinAggrega
     agg.rowCount++
     agg.rawRows.push(row)
 
-    // Sum every column that parses as a number (ensures we don't miss Impressions etc.)
+    // Start with additive metrics.
     headers.forEach((h) => {
-      const num = parseNum(row.raw[h])
+      const raw = row.raw[h]
+      if (!isNumericMetricValue(raw)) return
+      if (isAcosHeader(h) || isRoasHeader(h) || isCtrHeader(h) || isCpcHeader(h) || isConversionRateHeader(h)) {
+        return
+      }
+      const num = parseNum(raw)
       agg!.metrics[h] = (agg!.metrics[h] ?? 0) + num
+    })
+  }
+
+  // Build logically derived/weighted rate metrics.
+  for (const agg of byAsin.values()) {
+    const spendHeader = pickPreferredHeader(headers, isSpendHeader)
+    const salesHeader = pickPreferredHeader(headers, isSalesHeader)
+    const clicksHeader = pickPreferredHeader(headers, isClicksHeader)
+    const impressionsHeader = pickPreferredHeader(headers, isImpressionsHeader)
+    const ordersHeader = pickPreferredHeader(headers, isOrderHeader)
+
+    const totalSpend = spendHeader ? agg.metrics[spendHeader] ?? 0 : 0
+    const totalSales = salesHeader ? agg.metrics[salesHeader] ?? 0 : 0
+    const totalClicks = clicksHeader ? agg.metrics[clicksHeader] ?? 0 : 0
+    const totalImpressions = impressionsHeader ? agg.metrics[impressionsHeader] ?? 0 : 0
+    const totalOrders = ordersHeader ? agg.metrics[ordersHeader] ?? 0 : 0
+
+    headers.forEach((h) => {
+      if (isAcosHeader(h)) {
+        // Match analyst expectations: ACOS displayed as row-average ACOS (excluding zeros) when available.
+        // Fallback to weighted ACOS if no usable row-level ACOS values exist.
+        const avgAcos = averageMetricFromRows(agg.rawRows, h, true)
+        agg.metrics[h] = avgAcos != null ? avgAcos : totalSales > 0 ? totalSpend / totalSales : 0
+      } else if (isRoasHeader(h)) {
+        agg.metrics[h] = totalSpend > 0 ? totalSales / totalSpend : 0
+      } else if (isCtrHeader(h)) {
+        agg.metrics[h] = totalImpressions > 0 ? totalClicks / totalImpressions : 0
+      } else if (isCpcHeader(h)) {
+        agg.metrics[h] = totalClicks > 0 ? totalSpend / totalClicks : 0
+      } else if (isConversionRateHeader(h)) {
+        agg.metrics[h] = totalClicks > 0 ? totalOrders / totalClicks : 0
+      }
     })
   }
 
@@ -126,6 +245,42 @@ export function getNumericMetricHeaders(headers: string[]): string[] {
   ]
   return headers.filter((h) => {
     const l = h.toLowerCase()
-    return numericPatterns.some((p) => l.includes(p))
+    const looksNumericMetric = numericPatterns.some((p) => l.includes(p))
+    if (!looksNumericMetric) return false
+    return !/\bbudget\b/.test(l)
   })
+}
+
+/** Metrics appropriate for pie distribution (additive KPI volumes, not ratios). */
+export function getPieMetricHeaders(headers: string[]): string[] {
+  return getNumericMetricHeaders(headers).filter(
+    (h) => !isAcosHeader(h) && !isRoasHeader(h) && !isCpcHeader(h) && !isCtrHeader(h) && !isConversionRateHeader(h)
+  )
+}
+
+export function getMetricOptionLabel(header: string): string {
+  if (isAcosHeader(header)) return `${header} (weighted from spend/sales)`
+  if (isRoasHeader(header)) return `${header} (weighted from sales/spend)`
+  if (isCpcHeader(header)) return `${header} (derived spend/clicks)`
+  if (isCtrHeader(header)) return `${header} (derived clicks/impressions)`
+  if (isConversionRateHeader(header)) return `${header} (derived orders/clicks)`
+  return `${header} (sum)`
+}
+
+export function formatMetricValue(header: string, value: number): string {
+  if (!Number.isFinite(value)) return '—'
+  if (isSpendHeader(header) || /sales/i.test(header)) {
+    return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+  if (isAcosHeader(header) || isCtrHeader(header) || isConversionRateHeader(header)) {
+    const pct = value <= 1.5 ? value * 100 : value
+    return `${pct.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
+  }
+  if (isRoasHeader(header) || isCpcHeader(header)) {
+    return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+  if (isClicksHeader(header) || isImpressionsHeader(header) || isOrderHeader(header)) {
+    return value.toLocaleString(undefined, { maximumFractionDigits: 0 })
+  }
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 })
 }

@@ -3,7 +3,9 @@ import { parseReferenceExactCsvWithMetrics, type ReferenceExactResult } from '..
 import { readEncodedTextFile, TABULAR_UPLOAD_ACCEPT } from '../../utils/readEncodedTextFile'
 
 interface ReferenceExactUploaderProps {
-  onDataLoaded: (data: ReferenceExactResult) => void
+  onDataLoaded: (data: ReferenceExactResult, fileName: string) => void
+  onClear: () => void
+  fileName?: string
   /** Rows parsed from CSV (one per campaign line) */
   campaignRowCount: number
   /** Distinct keyword + ASIN targets (one per product) */
@@ -13,6 +15,8 @@ interface ReferenceExactUploaderProps {
 
 export function ReferenceExactUploader({
   onDataLoaded,
+  onClear,
+  fileName,
   campaignRowCount,
   uniqueKeywordCount,
   referenceFormat,
@@ -25,11 +29,16 @@ export function ReferenceExactUploader({
       if (!file) return
       const text = await readEncodedTextFile(file)
       const result = parseReferenceExactCsvWithMetrics(text)
-      onDataLoaded(result)
+      onDataLoaded(result, file.name)
       e.target.value = ''
     },
     [onDataLoaded]
   )
+
+  const handleClear = useCallback(() => {
+    onClear()
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }, [onClear])
 
   return (
     <section className="panel auto-exact-reference auto-exact-reference--compact">
@@ -43,7 +52,13 @@ export function ReferenceExactUploader({
           className="auto-exact-reference-file"
         />
         {campaignRowCount > 0 && (
-          <p className="auto-exact-reference-count muted">
+          <>
+            {fileName && (
+              <p className="auto-exact-reference-count muted">
+                Loaded: <strong>{fileName}</strong>
+              </p>
+            )}
+            <p className="auto-exact-reference-count muted">
             {referenceFormat === 'targeting-export' ? (
               <>
                 {campaignRowCount} EXACT keyword{campaignRowCount === 1 ? '' : 's'} from targeting export
@@ -58,6 +73,10 @@ export function ReferenceExactUploader({
               </>
             )}
           </p>
+            <button type="button" className="btn btn--secondary btn--small" onClick={handleClear}>
+              Remove reference file
+            </button>
+          </>
         )}
       </div>
     </section>

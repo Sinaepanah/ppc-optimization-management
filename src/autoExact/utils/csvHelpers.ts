@@ -1,4 +1,11 @@
-import { parseCSV } from '../../utils/csv'
+import {
+  detectAttributedSalesColumn,
+  detectClicksColumn,
+  detectPurchasesColumn,
+  detectSpendColumn,
+  findSearchTermReportHeaderRow,
+  parseCSV,
+} from '../../utils/csv'
 import type { ColumnMapping, ParsedRow, RawRow } from '../types'
 
 const SEARCH_TERM_NAMES = [
@@ -14,6 +21,7 @@ const SPEND_NAMES = [
   'Spend(USD)',
   'Cost',
   'Total Cost',
+  'Total cost',
   '14 Day Total Spend',
   '7 Day Total Spend',
   'Spend (USD)',
@@ -24,6 +32,7 @@ const SALES_NAMES = [
   'Sales(USD)',
   'Attributed Sales',
   '14 Day Total Sales',
+  '14 Day Total Sales - (Click)',
   '7 Day Total Sales',
   'Total Sales',
   'Attributed Sales (USD)',
@@ -33,24 +42,34 @@ const ORDERS_NAMES = [
   'Orders',
   'Total Orders',
   '14 Day Total Orders',
+  '14 Day Total Orders (#)',
+  '14 Day Total Orders (#) - (Click)',
   '7 Day Total Orders',
+  '7 Day Total Orders (#)',
   'Unit Sold',
   'Purchases',
 ]
 const CLICKS_NAMES = ['Clicks', 'Total Clicks']
 const IMPRESSIONS_NAMES = ['Impressions']
-const CPC_NAMES = ['CPC(USD)', 'CPC (USD)', 'CPC', 'Avg CPC']
-const CAMPAIGN_NAMES = ['Campaign Name', 'Campaign']
+const CPC_NAMES = ['CPC(USD)', 'CPC (USD)', 'CPC', 'Avg CPC', 'Cost Per Click (CPC)']
+const CAMPAIGN_NAMES = ['Campaign Name', 'Campaign name', 'Campaign']
 const AD_GROUP_NAMES = ['Ad Group Name', 'Ad Group']
-const MATCH_TYPE_NAMES = ['Match Type']
-const TARGETING_NAMES = ['Targeting', 'Keyword', 'Target']
+const MATCH_TYPE_NAMES = ['Match Type', 'Target match type']
+const TARGETING_NAMES = ['Targeting', 'Keyword', 'Keywords', 'Target']
 const ROAS_NAMES = [
   'ROAS',
   'RoAS',
   'Return on Advertising Spend',
+  'Total Return on Advertising Spend (ROAS)',
   '14 Day Total ROAS',
   '7 Day Total ROAS',
   'Total ROAS',
+]
+const ACOS_NAMES = [
+  'ACOS',
+  'ACoS',
+  'Total Advertising Cost of Sales (ACOS)',
+  'Advertising cost of sales (ACOS)',
 ]
 
 /** Normalize header for matching: trim, strip BOM and surrounding quotes, lowercase */
@@ -90,6 +109,37 @@ function findColumnOr(headers: string[], exactList: string[], ...contains: strin
   return -1
 }
 
+function detectAcosColumn(headers: string[]): number {
+  const idx = findColumn(headers, ACOS_NAMES)
+  if (idx >= 0) return idx
+  const normalized = headers.map(normHeader)
+  for (let i = 0; i < normalized.length; i++) {
+    const h = normalized[i]
+    if (/\bacos\b/.test(h) && !/click\)/.test(h)) return i
+  }
+  return -1
+}
+
+function pickColumn(detected: number, headers: string[], exactList: string[], ...contains: string[]): number {
+  if (detected >= 0) return detected
+  return findColumnOr(headers, exactList, ...contains)
+}
+
+function hasDerivableSpend(mapping: ColumnMapping): boolean {
+  return mapping.spend >= 0 || (mapping.clicks >= 0 && mapping.cpc >= 0)
+}
+
+function hasDerivableSales(mapping: ColumnMapping): boolean {
+  return mapping.sales >= 0 || mapping.roas >= 0 || mapping.acos >= 0
+}
+
+/** Amazon exports ACoS as spend/sales ratio (0.63) or occasionally as percent (63). */
+function acosRatioFromCell(val: string): number {
+  const n = num(val)
+  if (n <= 0) return 0
+  return n > 10 ? n / 100 : n
+}
+
 export function getHeaderSuggestions(rows: string[][]): ColumnMapping {
   if (rows.length === 0) {
     return {
@@ -105,17 +155,21 @@ export function getHeaderSuggestions(rows: string[][]): ColumnMapping {
       matchType: -1,
       targeting: -1,
       roas: -1,
+      acos: -1,
     }
   }
-  const rawHeaders = rows[0].map((h) => (h ?? '').trim().replace(/^\uFEFF/, '').replace(/^"+|"+$/g, ''))
+  const headerRowIdx = findSearchTermReportHeaderRow(rows)
+  const rawHeaders = (rows[headerRowIdx] ?? rows[0] ?? []).map((h) =>
+    (h ?? '').trim().replace(/^\uFEFF/, '').replace(/^"+|"+$/g, '')
+  )
   const headers = rawHeaders.length ? rawHeaders : []
   const searchTermIdx = findColumn(headers, SEARCH_TERM_NAMES)
   return {
     searchTerm: searchTermIdx >= 0 ? searchTermIdx : 0,
-    spend: findColumnOr(headers, SPEND_NAMES, 'spend', 'cost'),
-    sales: findColumnOr(headers, SALES_NAMES, 'sales'),
-    orders: findColumnOr(headers, ORDERS_NAMES, 'orders', 'unit sold', 'purchases'),
-    clicks: findColumnOr(headers, CLICKS_NAMES, 'clicks'),
+    spend: pickColumn(detectSpendColumn(headers), headers, SPEND_NAMES, 'spend', 'cost'),
+    sales: pickColumn(detectAttributedSalesColumn(headers), headers, SALES_NAMES, 'sales'),
+    orders: pickColumn(detectPurchasesColumn(headers), headers, ORDERS_NAMES, 'orders', 'unit sold', 'purchases'),
+    clicks: pickColumn(detectClicksColumn(headers), headers, CLICKS_NAMES, 'clicks'),
     impressions: findColumn(headers, IMPRESSIONS_NAMES),
     cpc: findColumnOr(headers, CPC_NAMES, 'cpc'),
     campaignName: findColumn(headers, CAMPAIGN_NAMES),
@@ -123,12 +177,15 @@ export function getHeaderSuggestions(rows: string[][]): ColumnMapping {
     matchType: findColumn(headers, MATCH_TYPE_NAMES),
     targeting: findColumn(headers, TARGETING_NAMES),
     roas: findColumnOr(headers, ROAS_NAMES, 'roas', 'return on advertising'),
+    acos: detectAcosColumn(headers),
   }
 }
 
 export function getColumnOptions(rows: string[][]): string[] {
   if (rows.length === 0) return []
-  return rows[0].map((h, i) => (h?.trim() || `Column ${i + 1}`))
+  const headerRowIdx = findSearchTermReportHeaderRow(rows)
+  const header = rows[headerRowIdx] ?? rows[0]
+  return header.map((h, i) => (h?.trim() || `Column ${i + 1}`))
 }
 
 export function parseCSVText(text: string): string[][] {
@@ -207,12 +264,37 @@ export function rowToRaw(row: string[]): RawRow {
   return out
 }
 
+function deriveSpend(raw: RawRow, mapping: ColumnMapping): number {
+  let spend = mapping.spend >= 0 ? num(raw[mapping.spend] ?? '') : 0
+  if (spend <= 0 && mapping.clicks >= 0 && mapping.cpc >= 0) {
+    const clicks = num(raw[mapping.clicks] ?? '')
+    const cpc = num(raw[mapping.cpc] ?? '')
+    if (clicks > 0 && cpc > 0) spend = clicks * cpc
+  }
+  return spend
+}
+
+function deriveSales(raw: RawRow, mapping: ColumnMapping, spend: number): number {
+  let sales = mapping.sales >= 0 ? num(raw[mapping.sales] ?? '') : 0
+  if (sales <= 0 && spend > 0) {
+    if (mapping.roas >= 0) {
+      const roas = num(raw[mapping.roas] ?? '')
+      if (roas > 0) sales = spend * roas
+    }
+    if (sales <= 0 && mapping.acos >= 0) {
+      const acos = acosRatioFromCell(raw[mapping.acos] ?? '')
+      if (acos > 0) sales = spend / acos
+    }
+  }
+  return sales
+}
+
 /** Parse one raw row using column mapping. Returns null if required fields missing. */
 export function parseRow(raw: RawRow, mapping: ColumnMapping): ParsedRow | null {
   const term = str(raw[mapping.searchTerm] ?? '')
   if (!term) return null
-  const spend = num(raw[mapping.spend] ?? '')
-  const sales = num(raw[mapping.sales] ?? '')
+  const spend = deriveSpend(raw, mapping)
+  const sales = deriveSales(raw, mapping, spend)
   let roas: number | null = null
   if (spend > 0) {
     const computed = sales / spend
@@ -242,8 +324,8 @@ export function parseRow(raw: RawRow, mapping: ColumnMapping): ParsedRow | null 
 export function getRequiredMissing(mapping: ColumnMapping): string[] {
   const missing: string[] = []
   if (mapping.searchTerm < 0) missing.push('Search Term')
-  if (mapping.spend < 0) missing.push('Spend')
-  if (mapping.sales < 0) missing.push('Sales')
+  if (!hasDerivableSpend(mapping)) missing.push('Spend')
+  if (!hasDerivableSales(mapping)) missing.push('Sales')
   if (mapping.orders < 0) missing.push('Orders')
   return missing
 }

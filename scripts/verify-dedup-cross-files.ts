@@ -59,6 +59,18 @@ const c2 = loadCampaign('sb-cross-b', f2Path, refHeader, refCol)
 assert.equal(c1.matchTargetKind, 'keywords')
 runCrossFileRegression(c1, c2)
 
+const nonDuplicates = findWithinFileDuplicates([c1, c2], 1, 1)
+assert.ok(nonDuplicates.length > 0, 'non-duplicate: at least one single-keyword term')
+assert.ok(
+  !nonDuplicates.some((d) => d.normalizedTerm === 'kidney support for man'),
+  'non-duplicate: multi-keyword kidney term excluded'
+)
+assert.ok(
+  !nonDuplicates.some((d) => d.normalizedTerm === 'urinalysis'),
+  'non-duplicate: multi-keyword urinalysis excluded'
+)
+assert.ok(nonDuplicates.every((d) => d.campaignCount === 1), 'non-duplicate: exactly one matched keyword each')
+
 // Optional: user Downloads samples when available
 const downloads = 'c:/Users/sinae/Downloads'
 const dl1 = join(downloads, 'Sponsored_Brands_campaign_search_terms_May_31_2026.csv')

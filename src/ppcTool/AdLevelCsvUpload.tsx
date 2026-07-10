@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import { parseAdLevelCsv } from './utils/adLevelCsvParser'
+import { isSupportedTabularFile, readEncodedTextFile, TABULAR_UPLOAD_ACCEPT } from '../utils/readEncodedTextFile'
 
 const AD_LEVEL_KEYS = ['bid', 'impressions', 'clicks', 'totalCost', 'cpc', 'purchases', 'sales', 'acos'] as const
 
@@ -13,29 +14,21 @@ export function AdLevelCsvUpload({ onDataChange }: AdLevelCsvUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const parseCsv = useCallback(
-    (file: File) => {
+    async (file: File) => {
       setError(null)
-      const reader = new FileReader()
-      reader.onload = () => {
-        try {
-          const text = String(reader.result ?? '')
-          const extracted = parseAdLevelCsv(text)
-          const next: Record<string, string> = {}
-          for (const k of AD_LEVEL_KEYS) {
-            next[k] = extracted[k as keyof typeof extracted] ?? ''
-          }
-          onDataChange?.(next)
-          setStatus('done')
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to parse CSV')
-          setStatus('error')
+      try {
+        const text = await readEncodedTextFile(file)
+        const extracted = parseAdLevelCsv(text)
+        const next: Record<string, string> = {}
+        for (const k of AD_LEVEL_KEYS) {
+          next[k] = extracted[k as keyof typeof extracted] ?? ''
         }
-      }
-      reader.onerror = () => {
-        setError('Failed to read file')
+        onDataChange?.(next)
+        setStatus('done')
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to parse CSV')
         setStatus('error')
       }
-      reader.readAsText(file, 'UTF-8')
     },
     [onDataChange]
   )
@@ -43,10 +36,10 @@ export function AdLevelCsvUpload({ onDataChange }: AdLevelCsvUploadProps) {
   const handleFile = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
-      if (file && (file.name.endsWith('.csv') || file.type === 'text/csv' || file.type === 'application/csv')) {
+      if (file && isSupportedTabularFile(file)) {
         parseCsv(file)
       } else if (file) {
-        setError('Please select a CSV file')
+        setError('Please select a CSV or Excel file')
         setStatus('error')
       }
       e.target.value = ''
@@ -58,10 +51,10 @@ export function AdLevelCsvUpload({ onDataChange }: AdLevelCsvUploadProps) {
     (e: React.DragEvent) => {
       e.preventDefault()
       const file = e.dataTransfer.files[0]
-      if (file?.name.endsWith('.csv') || file?.type === 'text/csv' || file?.type === 'application/csv') {
+      if (file && isSupportedTabularFile(file)) {
         parseCsv(file)
       } else if (file) {
-        setError('Please drop a CSV file')
+        setError('Please drop a CSV or Excel file')
         setStatus('error')
       }
     },
@@ -85,13 +78,13 @@ export function AdLevelCsvUpload({ onDataChange }: AdLevelCsvUploadProps) {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv,text/csv,application/csv"
+          accept={TABULAR_UPLOAD_ACCEPT}
           onChange={handleFile}
           className="ppc-upload-input"
         />
         <div className="ppc-upload-content">
           <span className="ppc-upload-icon">📄</span>
-          <p className="ppc-upload-title">Drop CSV or click to browse</p>
+          <p className="ppc-upload-title">Drop CSV/Excel or click to browse</p>
           <p className="ppc-upload-hint">
             Ad-level metrics: Bid, Impressions, Clicks, Total Cost, CPC, Purchases, Sales, ACOS
           </p>

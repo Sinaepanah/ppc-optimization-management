@@ -3,6 +3,10 @@ export interface TermMatchMetrics {
   purchases: number
   spend: number
   attributedSales: number
+  /** Σ(reported ACOS% × orders) for rows that shipped a pre-computed ACOS column but no spend/sales. */
+  acosPctWeightedSum?: number
+  /** Σ(orders) used as the weight for acosPctWeightedSum. */
+  acosWeight?: number
 }
 
 /** Which CSV column populated termMatchBreakdown (Keywords vs Product targets). */
@@ -23,10 +27,16 @@ export interface Campaign {
   normalizedToSpend: Map<string, number>
   /** Sum of attributed sales revenue (currency) per normalized term when present; used with spend for ACOS. */
   normalizedToAttributedSales: Map<string, number>
+  /** Σ(reported ACOS% × orders) per normalized term — fallback ACOS when spend/sales columns are 0/absent. */
+  normalizedToAcosPctWeightedSum?: Map<string, number>
+  /** Σ(orders) weight matching normalizedToAcosPctWeightedSum. */
+  normalizedToAcosWeight?: Map<string, number>
   /** Per search term → matched keyword/target label → metrics. Used for within-file duplicate detection. */
   termMatchBreakdown?: Map<string, Map<string, TermMatchMetrics>>
   /** Source of termMatchBreakdown labels when built from CSV (Keywords vs Product targets). */
   matchTargetKind?: MatchTargetKind
+  /** Parsed tabular rows from the original upload (for reuse in Auto → Exact). */
+  sourceRows?: string[][]
 }
 
 export interface Topic {

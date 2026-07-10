@@ -1,8 +1,25 @@
 import type { Campaign, DuplicateResult, MatchTargetKind, TermMatchMetrics } from '../types'
 import { normalize } from './normalize'
+
+/** Normalizer signature used by dedup builders. */
+export type TermNormalizer = (term: string) => string | null
+
+/**
+ * Deduplication-only term key that PRESERVES punctuation (e.g. "&") so distinct customer search
+ * terms like "gh kh test kit" and "gh & kh test kit" are NOT merged. Still lowercases and collapses
+ * whitespace because Amazon exact match is case-insensitive and space-normalized. This is separate
+ * from the shared `normalize()` used elsewhere (Relevancy, Auto Exact) so their behavior is unchanged.
+ */
+export function normalizeExactTerm(term: string): string | null {
+  if (typeof term !== 'string') return null
+  const s = term.replace(/\s+/g, ' ').trim().toLowerCase()
+  return s === '' ? null : s
+}
 import {
   classifyMatchTargetColumn,
   detectDelimiter,
+  detectAcosColumn,
+  detectRoasColumn,
   detectAttributedSalesColumn,
   detectClicksColumn,
   detectMatchTargetColumn,
@@ -21,15 +38,40 @@ function acosPctFromSpendAndSales(spend: number, sales: number): number | null {
   return (spend / sales) * 100
 }
 
+/**
+ * ACOS % preferring real spend/sales. When a report ships ACOS but zeroed spend/sales, fall back to
+ * the orders-weighted average of the reported ACOS (Σ acos·orders / Σ orders).
+ */
+function resolveAcosPct(
+  spend: number,
+  sales: number,
+  acosPctWeightedSum = 0,
+  acosWeight = 0
+): number | null {
+  const fromSpendSales = acosPctFromSpendAndSales(spend, sales)
+  if (fromSpendSales != null) return fromSpendSales
+  if (acosWeight > 0 && Number.isFinite(acosPctWeightedSum)) return acosPctWeightedSum / acosWeight
+  return null
+}
+
+function passesCountThreshold(count: number, min: number, max?: number): boolean {
+  if (count < min) return false
+  if (max !== undefined && count > max) return false
+  return true
+}
+
 export function findCrossCampaignDuplicates(
   campaigns: Campaign[],
-  minCampaigns: number = 2
+  minCampaigns: number = 2,
+  maxCampaigns?: number
 ): DuplicateResult[] {
   /** normalized term → campaign name → clicks for that term in that campaign */
   const normalizedToCampaignClicks = new Map<string, Map<string, number>>()
   const normalizedToCampaignPurchases = new Map<string, Map<string, number>>()
   const normalizedToCampaignSpend = new Map<string, Map<string, number>>()
   const normalizedToCampaignAttributedSales = new Map<string, Map<string, number>>()
+  const normalizedToCampaignAcosWeightedSum = new Map<string, Map<string, number>>()
+  const normalizedToCampaignAcosWeight = new Map<string, Map<string, number>>()
 
   for (const camp of campaigns) {
     for (const norm of camp.normalizedToOriginal.keys()) {
@@ -66,13 +108,29 @@ export function findCrossCampaignDuplicates(
       if (!byAS.has(camp.name)) {
         byAS.set(camp.name, camp.normalizedToAttributedSales?.get(norm) ?? 0)
       }
+
+      if (!normalizedToCampaignAcosWeightedSum.has(norm)) {
+        normalizedToCampaignAcosWeightedSum.set(norm, new Map())
+      }
+      const byAcosSum = normalizedToCampaignAcosWeightedSum.get(norm)!
+      if (!byAcosSum.has(camp.name)) {
+        byAcosSum.set(camp.name, camp.normalizedToAcosPctWeightedSum?.get(norm) ?? 0)
+      }
+
+      if (!normalizedToCampaignAcosWeight.has(norm)) {
+        normalizedToCampaignAcosWeight.set(norm, new Map())
+      }
+      const byAcosW = normalizedToCampaignAcosWeight.get(norm)!
+      if (!byAcosW.has(camp.name)) {
+        byAcosW.set(camp.name, camp.normalizedToAcosWeight?.get(norm) ?? 0)
+      }
     }
   }
 
   const results: DuplicateResult[] = []
   for (const [normalizedTerm, byCampaign] of normalizedToCampaignClicks) {
     const campaignNames = Array.from(byCampaign.keys())
-    if (campaignNames.length >= minCampaigns) {
+    if (passesCountThreshold(campaignNames.length, minCampaigns, maxCampaigns)) {
       const clicksByCampaign = new Map(byCampaign)
       let totalClicks = 0
       for (const v of clicksByCampaign.values()) totalClicks += v
@@ -88,21 +146,29 @@ export function findCrossCampaignDuplicates(
 
       const spendMap = normalizedToCampaignSpend.get(normalizedTerm) ?? new Map<string, number>()
       const salesMap = normalizedToCampaignAttributedSales.get(normalizedTerm) ?? new Map<string, number>()
+      const acosSumMap = normalizedToCampaignAcosWeightedSum.get(normalizedTerm) ?? new Map<string, number>()
+      const acosWeightMap = normalizedToCampaignAcosWeight.get(normalizedTerm) ?? new Map<string, number>()
       const spendByCampaign = new Map<string, number>()
       const attributedSalesByCampaign = new Map<string, number>()
       const acosPctByCampaign = new Map<string, number | null>()
       let totalSpend = 0
       let totalAttributedSales = 0
+      let totalAcosWeightedSum = 0
+      let totalAcosWeight = 0
       for (const name of campaignNames) {
         const sp = spendMap.get(name) ?? 0
         const rev = salesMap.get(name) ?? 0
+        const acosSum = acosSumMap.get(name) ?? 0
+        const acosW = acosWeightMap.get(name) ?? 0
         spendByCampaign.set(name, sp)
         attributedSalesByCampaign.set(name, rev)
-        acosPctByCampaign.set(name, acosPctFromSpendAndSales(sp, rev))
+        acosPctByCampaign.set(name, resolveAcosPct(sp, rev, acosSum, acosW))
         totalSpend += sp
         totalAttributedSales += rev
+        totalAcosWeightedSum += acosSum
+        totalAcosWeight += acosW
       }
-      const totalAcosPct = acosPctFromSpendAndSales(totalSpend, totalAttributedSales)
+      const totalAcosPct = resolveAcosPct(totalSpend, totalAttributedSales, totalAcosWeightedSum, totalAcosWeight)
 
       results.push({
         normalizedTerm,
@@ -128,7 +194,11 @@ export function findCrossCampaignDuplicates(
  * `bundleName` are aggregated (sums for clicks, purchases, spend, sales; ACOS from batch totals).
  * Files without a bundle name are treated as their own batch (one CSV = one batch).
  */
-export function findCrossBatchDuplicates(campaigns: Campaign[], minBatches: number = 2): DuplicateResult[] {
+export function findCrossBatchDuplicates(
+  campaigns: Campaign[],
+  minBatches: number = 2,
+  maxBatches?: number
+): DuplicateResult[] {
   const batchMap = new Map<string, { label: string; camps: Campaign[] }>()
   for (const c of campaigns) {
     const bn = c.bundleName?.trim()
@@ -158,19 +228,25 @@ export function findCrossBatchDuplicates(campaigns: Campaign[], minBatches: numb
     purchases: number
     spend: number
     attributedSales: number
+    acosPctWeightedSum: number
+    acosWeight: number
   } {
     const { camps } = batchMap.get(bKey)!
     let clicks = 0
     let purchases = 0
     let spend = 0
     let attributedSales = 0
+    let acosPctWeightedSum = 0
+    let acosWeight = 0
     for (const camp of camps) {
       clicks += camp.normalizedToClicks?.get(norm) ?? 0
       purchases += camp.normalizedToPurchases?.get(norm) ?? 0
       spend += camp.normalizedToSpend?.get(norm) ?? 0
       attributedSales += camp.normalizedToAttributedSales?.get(norm) ?? 0
+      acosPctWeightedSum += camp.normalizedToAcosPctWeightedSum?.get(norm) ?? 0
+      acosWeight += camp.normalizedToAcosWeight?.get(norm) ?? 0
     }
-    return { clicks, purchases, spend, attributedSales }
+    return { clicks, purchases, spend, attributedSales, acosPctWeightedSum, acosWeight }
   }
 
   function uniqueBatchLabels(batchKeyList: string[]): string[] {
@@ -188,7 +264,7 @@ export function findCrossBatchDuplicates(campaigns: Campaign[], minBatches: numb
 
   const results: DuplicateResult[] = []
   for (const [normalizedTerm, batchKeys] of normToBatchKeys) {
-    if (batchKeys.size < minBatches) continue
+    if (!passesCountThreshold(batchKeys.size, minBatches, maxBatches)) continue
 
     const batchKeyList = Array.from(batchKeys).sort((a, b) => {
       const la = batchMap.get(a)!.label
@@ -207,6 +283,8 @@ export function findCrossBatchDuplicates(campaigns: Campaign[], minBatches: numb
     let totalPurchases = 0
     let totalSpend = 0
     let totalAttributedSales = 0
+    let totalAcosWeightedSum = 0
+    let totalAcosWeight = 0
 
     batchKeyList.forEach((bk, i) => {
       const label = labels[i]!
@@ -215,14 +293,16 @@ export function findCrossBatchDuplicates(campaigns: Campaign[], minBatches: numb
       purchasesByCampaign.set(label, agg.purchases)
       spendByCampaign.set(label, agg.spend)
       attributedSalesByCampaign.set(label, agg.attributedSales)
-      acosPctByCampaign.set(label, acosPctFromSpendAndSales(agg.spend, agg.attributedSales))
+      acosPctByCampaign.set(label, resolveAcosPct(agg.spend, agg.attributedSales, agg.acosPctWeightedSum, agg.acosWeight))
       totalClicks += agg.clicks
       totalPurchases += agg.purchases
       totalSpend += agg.spend
       totalAttributedSales += agg.attributedSales
+      totalAcosWeightedSum += agg.acosPctWeightedSum
+      totalAcosWeight += agg.acosWeight
     })
 
-    const totalAcosPct = acosPctFromSpendAndSales(totalSpend, totalAttributedSales)
+    const totalAcosPct = resolveAcosPct(totalSpend, totalAttributedSales, totalAcosWeightedSum, totalAcosWeight)
 
     results.push({
       normalizedTerm,
@@ -281,7 +361,19 @@ export function withinFileMatchLabels(kind: MatchTargetKind | undefined): {
 }
 
 function emptyTermMatchMetrics(): TermMatchMetrics {
-  return { clicks: 0, purchases: 0, spend: 0, attributedSales: 0 }
+  return { clicks: 0, purchases: 0, spend: 0, attributedSales: 0, acosPctWeightedSum: 0, acosWeight: 0 }
+}
+
+/** Older stored campaigns may omit spend/sales on breakdown rows — treat as zero. */
+function normalizeTermMatchMetrics(m: Partial<TermMatchMetrics>): TermMatchMetrics {
+  return {
+    clicks: Number.isFinite(m.clicks) ? m.clicks! : 0,
+    purchases: Number.isFinite(m.purchases) ? m.purchases! : 0,
+    spend: Number.isFinite(m.spend) ? m.spend! : 0,
+    attributedSales: Number.isFinite(m.attributedSales) ? m.attributedSales! : 0,
+    acosPctWeightedSum: Number.isFinite(m.acosPctWeightedSum) ? m.acosPctWeightedSum! : 0,
+    acosWeight: Number.isFinite(m.acosWeight) ? m.acosWeight! : 0,
+  }
 }
 
 /**
@@ -301,11 +393,15 @@ function resolveTargetBreakdownKey(
 }
 
 function addTermMatchMetrics(a: TermMatchMetrics, b: TermMatchMetrics): TermMatchMetrics {
+  const na = normalizeTermMatchMetrics(a)
+  const nb = normalizeTermMatchMetrics(b)
   return {
-    clicks: a.clicks + b.clicks,
-    purchases: a.purchases + b.purchases,
-    spend: a.spend + b.spend,
-    attributedSales: a.attributedSales + b.attributedSales,
+    clicks: na.clicks + nb.clicks,
+    purchases: na.purchases + nb.purchases,
+    spend: na.spend + nb.spend,
+    attributedSales: na.attributedSales + nb.attributedSales,
+    acosPctWeightedSum: na.acosPctWeightedSum! + nb.acosPctWeightedSum!,
+    acosWeight: na.acosWeight! + nb.acosWeight!,
   }
 }
 
@@ -329,7 +425,11 @@ export function mergeTermMatchBreakdowns(campaigns: Campaign[]): Map<string, Map
  * Within a single file or batch: find customer search terms matched by multiple distinct Keywords values.
  * Returns the same DuplicateResult shape; "campaigns" holds matched keyword labels.
  */
-export function findWithinFileDuplicates(campaigns: Campaign[], minMatches: number = 2): DuplicateResult[] {
+export function findWithinFileDuplicates(
+  campaigns: Campaign[],
+  minMatches: number = 2,
+  maxMatches?: number
+): DuplicateResult[] {
   const merged = mergeTermMatchBreakdowns(campaigns)
   const results: DuplicateResult[] = []
 
@@ -337,7 +437,7 @@ export function findWithinFileDuplicates(campaigns: Campaign[], minMatches: numb
     const keywords = Array.from(byKeyword.keys()).sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: 'base' })
     )
-    if (keywords.length < minMatches) continue
+    if (!passesCountThreshold(keywords.length, minMatches, maxMatches)) continue
 
     const clicksByCampaign = new Map<string, number>()
     const purchasesByCampaign = new Map<string, number>()
@@ -349,18 +449,22 @@ export function findWithinFileDuplicates(campaigns: Campaign[], minMatches: numb
     let totalPurchases = 0
     let totalSpend = 0
     let totalAttributedSales = 0
+    let totalAcosWeightedSum = 0
+    let totalAcosWeight = 0
 
     for (const kw of keywords) {
-      const m = byKeyword.get(kw)!
+      const m = normalizeTermMatchMetrics(byKeyword.get(kw)!)
       clicksByCampaign.set(kw, m.clicks)
       purchasesByCampaign.set(kw, m.purchases)
       spendByCampaign.set(kw, m.spend)
       attributedSalesByCampaign.set(kw, m.attributedSales)
-      acosPctByCampaign.set(kw, acosPctFromSpendAndSales(m.spend, m.attributedSales))
+      acosPctByCampaign.set(kw, resolveAcosPct(m.spend, m.attributedSales, m.acosPctWeightedSum, m.acosWeight))
       totalClicks += m.clicks
       totalPurchases += m.purchases
       totalSpend += m.spend
       totalAttributedSales += m.attributedSales
+      totalAcosWeightedSum += m.acosPctWeightedSum!
+      totalAcosWeight += m.acosWeight!
     }
 
     results.push({
@@ -374,7 +478,7 @@ export function findWithinFileDuplicates(campaigns: Campaign[], minMatches: numb
       spendByCampaign,
       attributedSalesByCampaign,
       acosPctByCampaign,
-      totalAcosPct: acosPctFromSpendAndSales(totalSpend, totalAttributedSales),
+      totalAcosPct: resolveAcosPct(totalSpend, totalAttributedSales, totalAcosWeightedSum, totalAcosWeight),
     })
   }
 
@@ -387,10 +491,13 @@ export function campaignsHaveMatchBreakdown(campaigns: Campaign[]): boolean {
 }
 
 /** Build campaign term maps from raw term list (no CSV clicks). */
-export function buildCampaignFromTerms(rawTerms: string[]): Omit<Campaign, 'id' | 'name'> {
+export function buildCampaignFromTerms(
+  rawTerms: string[],
+  normalizeFn: TermNormalizer = normalize
+): Omit<Campaign, 'id' | 'name'> {
   const normalizedToOriginal = new Map<string, string>()
   for (const raw of rawTerms) {
-    const n = normalize(raw)
+    const n = normalizeFn(raw)
     if (n != null && !normalizedToOriginal.has(n)) {
       normalizedToOriginal.set(n, raw)
     }
@@ -399,11 +506,15 @@ export function buildCampaignFromTerms(rawTerms: string[]): Omit<Campaign, 'id' 
   const normalizedToPurchases = new Map<string, number>()
   const normalizedToSpend = new Map<string, number>()
   const normalizedToAttributedSales = new Map<string, number>()
+  const normalizedToAcosPctWeightedSum = new Map<string, number>()
+  const normalizedToAcosWeight = new Map<string, number>()
   for (const k of normalizedToOriginal.keys()) {
     normalizedToClicks.set(k, 0)
     normalizedToPurchases.set(k, 0)
     normalizedToSpend.set(k, 0)
     normalizedToAttributedSales.set(k, 0)
+    normalizedToAcosPctWeightedSum.set(k, 0)
+    normalizedToAcosWeight.set(k, 0)
   }
   return {
     terms: Array.from(normalizedToOriginal.keys()),
@@ -412,6 +523,8 @@ export function buildCampaignFromTerms(rawTerms: string[]): Omit<Campaign, 'id' 
     normalizedToPurchases,
     normalizedToSpend,
     normalizedToAttributedSales,
+    normalizedToAcosPctWeightedSum,
+    normalizedToAcosWeight,
   }
 }
 
@@ -420,7 +533,8 @@ export function buildCampaignFromTerms(rawTerms: string[]): Omit<Campaign, 'id' 
  */
 export function buildCampaignFromSearchTermRows(
   rows: string[][],
-  termCol: number
+  termCol: number,
+  normalizeFn: TermNormalizer = normalize
 ): Omit<Campaign, 'id' | 'name'> {
   if (rows.length < 2) {
     return {
@@ -430,6 +544,8 @@ export function buildCampaignFromSearchTermRows(
       normalizedToPurchases: new Map(),
       normalizedToSpend: new Map(),
       normalizedToAttributedSales: new Map(),
+      normalizedToAcosPctWeightedSum: new Map(),
+      normalizedToAcosWeight: new Map(),
     }
   }
   const headerRow = findSearchTermReportHeaderRow(rows)
@@ -464,6 +580,8 @@ export function buildCampaignFromSearchTermRows(
   const purchasesCol = detectPurchasesColumn(headers)
   const spendCol = detectSpendColumn(headers)
   const attributedSalesCol = detectAttributedSalesColumn(headers)
+  const acosCol = detectAcosColumn(headers)
+  const roasCol = detectRoasColumn(headers)
   const matchTargetCol = detectMatchTargetColumn(headers)
   const matchTargetKind = classifyMatchTargetColumn(headers, matchTargetCol)
   const missingTargetLabel = emptyTargetLabel(matchTargetKind)
@@ -473,6 +591,8 @@ export function buildCampaignFromSearchTermRows(
   const normalizedToPurchases = new Map<string, number>()
   const normalizedToSpend = new Map<string, number>()
   const normalizedToAttributedSales = new Map<string, number>()
+  const normalizedToAcosPctWeightedSum = new Map<string, number>()
+  const normalizedToAcosWeight = new Map<string, number>()
   const termMatchBreakdown = new Map<string, Map<string, TermMatchMetrics>>()
 
   for (let i = headerRow + 1; i < rows.length; i++) {
@@ -481,13 +601,16 @@ export function buildCampaignFromSearchTermRows(
     const padded = row.length < width ? [...row, ...Array(width - row.length).fill('')] : row
 
     const rawTerm = getCsvCell(padded, termCol).trim()
-    const n = normalize(rawTerm)
+    const n = normalizeFn(rawTerm)
     if (!n) continue
 
     const clicks = clicksCol >= 0 ? parseCsvNumber(getCsvCell(padded, clicksCol)) : 0
     const purchases = purchasesCol >= 0 ? parseCsvNumber(getCsvCell(padded, purchasesCol)) : 0
     const spend = spendCol >= 0 ? parseCsvNumber(getCsvCell(padded, spendCol)) : 0
     const attrSales = attributedSalesCol >= 0 ? parseCsvNumber(getCsvCell(padded, attributedSalesCol)) : 0
+    const reportedAcosPct = readReportedAcosPct(padded, acosCol, roasCol)
+    const acosWeightForRow = reportedAcosPct != null && purchases > 0 ? purchases : 0
+    const acosWeightedSumForRow = acosWeightForRow > 0 ? reportedAcosPct! * acosWeightForRow : 0
 
     if (!normalizedToOriginal.has(n)) {
       normalizedToOriginal.set(n, rawTerm)
@@ -496,6 +619,8 @@ export function buildCampaignFromSearchTermRows(
     normalizedToPurchases.set(n, (normalizedToPurchases.get(n) ?? 0) + purchases)
     normalizedToSpend.set(n, (normalizedToSpend.get(n) ?? 0) + spend)
     normalizedToAttributedSales.set(n, (normalizedToAttributedSales.get(n) ?? 0) + attrSales)
+    normalizedToAcosPctWeightedSum.set(n, (normalizedToAcosPctWeightedSum.get(n) ?? 0) + acosWeightedSumForRow)
+    normalizedToAcosWeight.set(n, (normalizedToAcosWeight.get(n) ?? 0) + acosWeightForRow)
 
     const rawTarget =
       matchTargetCol >= 0 ? getCsvCell(padded, matchTargetCol).trim() : ''
@@ -510,6 +635,8 @@ export function buildCampaignFromSearchTermRows(
         purchases,
         spend,
         attributedSales: attrSales,
+        acosPctWeightedSum: acosWeightedSumForRow,
+        acosWeight: acosWeightForRow,
       })
     )
   }
@@ -521,9 +648,35 @@ export function buildCampaignFromSearchTermRows(
     normalizedToPurchases,
     normalizedToSpend,
     normalizedToAttributedSales,
+    normalizedToAcosPctWeightedSum,
+    normalizedToAcosWeight,
     termMatchBreakdown,
     ...(matchTargetKind != null ? { matchTargetKind } : {}),
   }
+}
+
+/**
+ * Reads a pre-computed ACOS % from a report row. Prefers the ACOS column but disambiguates
+ * percent (38.44) vs ratio (0.3844) using ROAS when present (ACOS% ≈ 100 / ROAS). Falls back to
+ * deriving ACOS from ROAS when the ACOS cell is blank.
+ */
+function readReportedAcosPct(row: string[], acosCol: number, roasCol: number): number | null {
+  const roas = roasCol >= 0 ? parseCsvNumber(getCsvCell(row, roasCol)) : NaN
+  const impliedFromRoas = Number.isFinite(roas) && roas > 0 ? 100 / roas : null
+
+  if (acosCol >= 0) {
+    const raw = getCsvCell(row, acosCol).trim()
+    if (raw !== '') {
+      const a = parseCsvNumber(raw)
+      if (Number.isFinite(a) && a > 0) {
+        if (impliedFromRoas != null) {
+          return Math.abs(a - impliedFromRoas) <= Math.abs(a * 100 - impliedFromRoas) ? a : a * 100
+        }
+        return a <= 1 ? a * 100 : a
+      }
+    }
+  }
+  return impliedFromRoas
 }
 
 function detectCampaignColumn(headers: string[]): number {
@@ -587,7 +740,8 @@ export interface SingleSheetDuplicateResult extends DuplicateResult {
 export function findSingleSheetDuplicatesByCampaign(
   text: string,
   minCampaigns = 2,
-  minCombinedClicks = 0
+  minCombinedClicks = 0,
+  normalizeFn: TermNormalizer = normalize
 ): SingleSheetDuplicateResult[] {
   const sep = detectDelimiter(text)
   const rows = parseDelimitedText(text, sep)
@@ -610,8 +764,10 @@ export function findSingleSheetDuplicatesByCampaign(
   const purchasesCol = detectPurchasesColumn(headers)
   const spendCol = detectSpendColumn(headers)
   const attributedSalesCol = detectAttributedSalesColumn(headers)
+  const acosCol = detectAcosColumn(headers)
+  const roasCol = detectRoasColumn(headers)
 
-  type Metrics = { clicks: number; impressions: number; purchases: number; spend: number; attributedSales: number }
+  type Metrics = { clicks: number; impressions: number; purchases: number; spend: number; attributedSales: number; acosPctWeightedSum: number; acosWeight: number }
   const byTerm = new Map<string, Map<string, Metrics>>()
 
   for (let i = headerRow + 1; i < rows.length; i++) {
@@ -621,7 +777,7 @@ export function findSingleSheetDuplicatesByCampaign(
 
     const rawTerm = getCsvCell(padded, termCol).trim()
     const campaign = getCsvCell(padded, campaignCol).trim()
-    const norm = normalize(rawTerm)
+    const norm = normalizeFn(rawTerm)
     if (!norm || !campaign) continue
 
     const clicks = clicksCol >= 0 ? parseCsvNumber(getCsvCell(padded, clicksCol)) : 0
@@ -629,16 +785,21 @@ export function findSingleSheetDuplicatesByCampaign(
     const purchases = purchasesCol >= 0 ? parseCsvNumber(getCsvCell(padded, purchasesCol)) : 0
     const spend = spendCol >= 0 ? parseCsvNumber(getCsvCell(padded, spendCol)) : 0
     const attrSales = attributedSalesCol >= 0 ? parseCsvNumber(getCsvCell(padded, attributedSalesCol)) : 0
+    const reportedAcosPct = readReportedAcosPct(padded, acosCol, roasCol)
+    const acosWeightForRow = reportedAcosPct != null && purchases > 0 ? purchases : 0
+    const acosWeightedSumForRow = acosWeightForRow > 0 ? reportedAcosPct! * acosWeightForRow : 0
 
     if (!byTerm.has(norm)) byTerm.set(norm, new Map())
     const byCampaign = byTerm.get(norm)!
-    const prev = byCampaign.get(campaign) ?? { clicks: 0, impressions: 0, purchases: 0, spend: 0, attributedSales: 0 }
+    const prev = byCampaign.get(campaign) ?? { clicks: 0, impressions: 0, purchases: 0, spend: 0, attributedSales: 0, acosPctWeightedSum: 0, acosWeight: 0 }
     byCampaign.set(campaign, {
       clicks: prev.clicks + clicks,
       impressions: prev.impressions + impressions,
       purchases: prev.purchases + purchases,
       spend: prev.spend + spend,
       attributedSales: prev.attributedSales + attrSales,
+      acosPctWeightedSum: prev.acosPctWeightedSum + acosWeightedSumForRow,
+      acosWeight: prev.acosWeight + acosWeightForRow,
     })
   }
 
@@ -661,6 +822,8 @@ export function findSingleSheetDuplicatesByCampaign(
     let totalPurchases = 0
     let totalSpend = 0
     let totalAttributedSales = 0
+    let totalAcosWeightedSum = 0
+    let totalAcosWeight = 0
     for (const campaign of campaigns) {
       const m = metricsByCampaign.get(campaign)!
       clicksByCampaign.set(campaign, m.clicks)
@@ -668,12 +831,14 @@ export function findSingleSheetDuplicatesByCampaign(
       purchasesByCampaign.set(campaign, m.purchases)
       spendByCampaign.set(campaign, m.spend)
       attributedSalesByCampaign.set(campaign, m.attributedSales)
-      acosPctByCampaign.set(campaign, acosPctFromSpendAndSales(m.spend, m.attributedSales))
+      acosPctByCampaign.set(campaign, resolveAcosPct(m.spend, m.attributedSales, m.acosPctWeightedSum, m.acosWeight))
       totalClicks += m.clicks
       totalImpressions += m.impressions
       totalPurchases += m.purchases
       totalSpend += m.spend
       totalAttributedSales += m.attributedSales
+      totalAcosWeightedSum += m.acosPctWeightedSum
+      totalAcosWeight += m.acosWeight
     }
     if (totalClicks < minCombinedClicks) continue
 
@@ -691,7 +856,7 @@ export function findSingleSheetDuplicatesByCampaign(
       attributedSalesByCampaign,
       acosPctByCampaign,
       totalSales: totalAttributedSales,
-      totalAcosPct: acosPctFromSpendAndSales(totalSpend, totalAttributedSales),
+      totalAcosPct: resolveAcosPct(totalSpend, totalAttributedSales, totalAcosWeightedSum, totalAcosWeight),
     })
   }
 

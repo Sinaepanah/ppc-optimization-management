@@ -351,3 +351,87 @@ export function parseReferenceExactCsvWithMetrics(csvText: string): ReferenceExa
 
   return campaignResult
 }
+
+const REFERENCE_EXACT_STORAGE_KEY = 'auto-exact-reference-exact-v1'
+
+export interface PersistedReferenceExact {
+  fileName?: string
+  campaignRowCount: number
+  referenceFormat?: ReferenceExactFormat
+  keywords: string[]
+  metricsByKeyword: [string, ReferenceExactMetrics][]
+  normalizedTermsInReference: string[]
+  campaignNamesInReference: string[]
+}
+
+export function serializeReferenceExactResult(
+  result: ReferenceExactResult,
+  fileName?: string
+): PersistedReferenceExact {
+  return {
+    fileName,
+    campaignRowCount: result.campaignRowCount,
+    referenceFormat: result.referenceFormat,
+    keywords: [...result.keywords],
+    metricsByKeyword: [...result.metricsByKeyword.entries()],
+    normalizedTermsInReference: [...result.normalizedTermsInReference],
+    campaignNamesInReference: [...result.campaignNamesInReference],
+  }
+}
+
+export function deserializeReferenceExactResult(data: PersistedReferenceExact): ReferenceExactResult {
+  return {
+    keywords: new Set(data.keywords),
+    metricsByKeyword: new Map(data.metricsByKeyword),
+    campaignRowCount: data.campaignRowCount,
+    normalizedTermsInReference: new Set(data.normalizedTermsInReference),
+    campaignNamesInReference: new Set(data.campaignNamesInReference),
+    referenceFormat: data.referenceFormat,
+  }
+}
+
+function isPersistedReferenceExact(v: unknown): v is PersistedReferenceExact {
+  if (typeof v !== 'object' || v === null) return false
+  const o = v as Record<string, unknown>
+  return (
+    typeof o.campaignRowCount === 'number' &&
+    Array.isArray(o.keywords) &&
+    Array.isArray(o.metricsByKeyword) &&
+    Array.isArray(o.normalizedTermsInReference) &&
+    Array.isArray(o.campaignNamesInReference)
+  )
+}
+
+export function loadPersistedReferenceExact(): {
+  result: ReferenceExactResult
+  fileName: string
+} | null {
+  try {
+    const raw = localStorage.getItem(REFERENCE_EXACT_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as unknown
+    if (!isPersistedReferenceExact(parsed)) return null
+    if (parsed.campaignRowCount <= 0 && parsed.keywords.length === 0) return null
+    return {
+      result: deserializeReferenceExactResult(parsed),
+      fileName: typeof parsed.fileName === 'string' ? parsed.fileName : '',
+    }
+  } catch {
+    return null
+  }
+}
+
+export function savePersistedReferenceExact(result: ReferenceExactResult, fileName?: string): void {
+  if (result.campaignRowCount <= 0 && result.keywords.size === 0) {
+    clearPersistedReferenceExact()
+    return
+  }
+  localStorage.setItem(
+    REFERENCE_EXACT_STORAGE_KEY,
+    JSON.stringify(serializeReferenceExactResult(result, fileName))
+  )
+}
+
+export function clearPersistedReferenceExact(): void {
+  localStorage.removeItem(REFERENCE_EXACT_STORAGE_KEY)
+}

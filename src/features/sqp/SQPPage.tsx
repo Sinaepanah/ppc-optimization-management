@@ -27,6 +27,7 @@ import { SQPUploader } from './SQPUploader'
 import { SQPTable } from './SQPTable'
 import { SQPEmptyState } from './SQPEmptyState'
 import { SQPErrorState } from './SQPErrorState'
+import { readEncodedTextFile } from '../../utils/readEncodedTextFile'
 import './SQP.css'
 
 export function SQPPage() {
@@ -66,16 +67,12 @@ export function SQPPage() {
     }
   })()
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      const text = String(reader.result ?? '')
-      setCsvText(text)
-      setFileName(file.name)
-    }
-    reader.readAsText(file, 'UTF-8')
+    const text = await readEncodedTextFile(file)
+    setCsvText(text)
+    setFileName(file.name)
     e.target.value = ''
   }, [])
 

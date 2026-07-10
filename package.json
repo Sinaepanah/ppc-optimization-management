@@ -10,6 +10,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "verify:dedup": "npx tsx scripts/verify-dedup-clicks.ts",
+    "verify:dedup:cross": "npx tsx scripts/verify-dedup-cross-files.ts",
+    "verify:dedup:sp": "npx tsx scripts/verify-dedup-sp-product-targets.ts",
+    "verify:dedup:all": "npm run verify:dedup && npm run verify:dedup:cross && npm run verify:dedup:sp",
     "preview": "vite preview",
     "server": "node server/index.js"
   },
@@ -17,7 +20,8 @@
     "lucide-react": "^0.577.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "tesseract.js": "^7.0.0"
+    "tesseract.js": "^7.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

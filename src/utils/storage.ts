@@ -1,6 +1,7 @@
 import type { Campaign, TermMatchMetrics, TopicProfile } from '../types'
 
 const CAMPAIGNS_KEY = 'ppc-analysis-campaigns'
+const CAMPAIGN_SOURCE_ROWS_KEY = 'ppc-analysis-campaign-source-rows'
 const PROFILES_KEY = 'ppc-analysis-profiles'
 const ACTIVE_PROFILE_KEY = 'ppc-analysis-active-profile'
 
@@ -116,6 +117,14 @@ function ensureMaps(campaigns: Campaign[]): Campaign[] {
     for (const k of normalizedToOriginal.keys()) {
       if (!normalizedToAttributedSales.has(k)) normalizedToAttributedSales.set(k, 0)
     }
+    const normalizedToAcosPctWeightedSum = restoreMap<number>(c.normalizedToAcosPctWeightedSum) ?? new Map<string, number>()
+    for (const k of normalizedToOriginal.keys()) {
+      if (!normalizedToAcosPctWeightedSum.has(k)) normalizedToAcosPctWeightedSum.set(k, 0)
+    }
+    const normalizedToAcosWeight = restoreMap<number>(c.normalizedToAcosWeight) ?? new Map<string, number>()
+    for (const k of normalizedToOriginal.keys()) {
+      if (!normalizedToAcosWeight.has(k)) normalizedToAcosWeight.set(k, 0)
+    }
     const bundleName =
       typeof c.bundleName === 'string' && c.bundleName.trim().length > 0 ? c.bundleName.trim() : undefined
     const termMatchBreakdown = restoreTermMatchBreakdown(c.termMatchBreakdown)
@@ -135,10 +144,63 @@ function ensureMaps(campaigns: Campaign[]): Campaign[] {
       normalizedToPurchases,
       normalizedToSpend,
       normalizedToAttributedSales,
+      normalizedToAcosPctWeightedSum,
+      normalizedToAcosWeight,
       ...(termMatchBreakdown != null ? { termMatchBreakdown } : {}),
       ...(matchTargetKind != null ? { matchTargetKind } : {}),
     }
   })
+}
+
+function loadCampaignSourceRowsMap(): Record<string, string[][]> {
+  try {
+    const raw = localStorage.getItem(CAMPAIGN_SOURCE_ROWS_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as unknown
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
+    return parsed as Record<string, string[][]>
+  } catch {
+    return {}
+  }
+}
+
+function saveCampaignSourceRowsMap(map: Record<string, string[][]>): void {
+  localStorage.setItem(CAMPAIGN_SOURCE_ROWS_KEY, JSON.stringify(map))
+}
+
+export function getStoredCampaignSourceRows(campaignId: string): string[][] | undefined {
+  const rows = loadCampaignSourceRowsMap()[campaignId]
+  return Array.isArray(rows) && rows.length > 0 ? rows : undefined
+}
+
+export function setStoredCampaignSourceRows(campaignId: string, rows: string[][]): void {
+  const map = loadCampaignSourceRowsMap()
+  map[campaignId] = rows
+  saveCampaignSourceRowsMap(map)
+}
+
+export function removeStoredCampaignSourceRows(campaignId: string): void {
+  const map = loadCampaignSourceRowsMap()
+  if (!(campaignId in map)) return
+  delete map[campaignId]
+  saveCampaignSourceRowsMap(map)
+}
+
+function attachSourceRows(campaigns: Campaign[]): Campaign[] {
+  const sourceMap = loadCampaignSourceRowsMap()
+  let migrated = false
+  const next = campaigns.map((c) => {
+    let sourceRows = sourceMap[c.id]
+    if ((!sourceRows || sourceRows.length === 0) && c.sourceRows && c.sourceRows.length > 0) {
+      sourceRows = c.sourceRows
+      sourceMap[c.id] = sourceRows
+      migrated = true
+    }
+    if (sourceRows && sourceRows.length > 0) return { ...c, sourceRows }
+    return c
+  })
+  if (migrated) saveCampaignSourceRowsMap(sourceMap)
+  return next
 }
 
 export function loadCampaigns(): Campaign[] {
@@ -146,7 +208,7 @@ export function loadCampaigns(): Campaign[] {
     const raw = localStorage.getItem(CAMPAIGNS_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw, reviver) as Campaign[]
-    return ensureMaps(parsed || [])
+    return attachSourceRows(ensureMaps(parsed || []))
   } catch {
     return []
   }
@@ -160,7 +222,7 @@ export async function loadCampaignsAsync(): Promise<Campaign[] | null> {
     const res = await fetch(`${base}/api/campaigns`)
     if (!res.ok) return null
     const parsed = (await res.json()) as Campaign[]
-    return ensureMaps(Array.isArray(parsed) ? parsed : [])
+    return attachSourceRows(ensureMaps(Array.isArray(parsed) ? parsed : []))
   } catch {
     return null
   }
@@ -169,9 +231,10 @@ export async function loadCampaignsAsync(): Promise<Campaign[] | null> {
 /** Save campaigns to API if configured. Always saves to localStorage as fallback. */
 export async function saveCampaignsAsync(campaigns: Campaign[]): Promise<void> {
   const base = getApiBase()
+  const stripped = campaigns.map(({ sourceRows: _sourceRows, ...rest }) => rest)
   if (base) {
     try {
-      const body = JSON.stringify(campaigns, replacer)
+      const body = JSON.stringify(stripped, replacer)
       await fetch(`${base}/api/campaigns`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body })
     } catch {
       /* ignore */
@@ -181,7 +244,13 @@ export async function saveCampaignsAsync(campaigns: Campaign[]): Promise<void> {
 }
 
 export function saveCampaigns(campaigns: Campaign[]): void {
-  localStorage.setItem(CAMPAIGNS_KEY, JSON.stringify(campaigns, replacer))
+  const sourceMap = loadCampaignSourceRowsMap()
+  for (const c of campaigns) {
+    if (c.sourceRows && c.sourceRows.length > 0) sourceMap[c.id] = c.sourceRows
+  }
+  saveCampaignSourceRowsMap(sourceMap)
+  const stripped = campaigns.map(({ sourceRows: _sourceRows, ...rest }) => rest)
+  localStorage.setItem(CAMPAIGNS_KEY, JSON.stringify(stripped, replacer))
 }
 
 export function loadProfiles(): TopicProfile[] {

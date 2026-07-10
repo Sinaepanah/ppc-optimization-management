@@ -1,4 +1,5 @@
 import type { FC } from 'react'
+import { TABULAR_UPLOAD_ACCEPT } from '../../utils/readEncodedTextFile'
 
 interface SQPUploaderProps {
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void
@@ -14,7 +15,7 @@ export const SQPUploader: FC<SQPUploaderProps> = ({
   <div className="sqp-upload">
     <input
       type="file"
-      accept=".csv,.txt"
+      accept={TABULAR_UPLOAD_ACCEPT}
       onChange={onFileChange}
       className="sqp-upload__input"
       id="sqp-file"
