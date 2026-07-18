@@ -279,6 +279,63 @@ export function detectClicksColumn(headers: string[]): number {
 }
 
 /**
+ * Impression count column (not impression share / rate / rank).
+ */
+export function detectImpressionsColumn(headers: string[]): number {
+  if (!headers?.length) return -1
+  const cells = headers.map((h) => normalizeHeaderCell(h))
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (h === 'impressions' || h === 'impression' || h === 'impr') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    const lettersOnly = h.replace(/[^a-z]/g, '')
+    if (lettersOnly === 'impressions' || lettersOnly === 'impression' || lettersOnly === 'impr') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (!/\bimpressions?\b|\bimpr\.?\b/.test(h)) continue
+    if (/share|rank|rate|market|viewable|ctr|click/.test(h)) continue
+    return i
+  }
+  return -1
+}
+
+/**
+ * Click-through rate column when present (value may be percent or ratio).
+ */
+export function detectCtrColumn(headers: string[]): number {
+  if (!headers?.length) return -1
+  const cells = headers.map((h) => normalizeHeaderCell(h))
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (h === 'ctr' || h === 'click through rate' || h === 'click-through rate' || h === 'clickthrough rate') return i
+  }
+  for (let i = 0; i < cells.length; i++) {
+    const h = cells[i]
+    if (/\bctr\b/.test(h) || /click[-\s]?through\s*rate/.test(h)) {
+      if (/share|rank|market/.test(h)) continue
+      return i
+    }
+  }
+  return -1
+}
+
+/** Parse CTR cell into a percent value (e.g. 0.45 → 0.45, 0.0045 → 0.45 when clearly a ratio). */
+export function parseCtrPercent(raw: string): number {
+  const t = raw.trim()
+  if (!t) return 0
+  const hasPct = /%/.test(t)
+  const n = parseCsvNumber(t)
+  if (!Number.isFinite(n) || n < 0) return 0
+  if (hasPct) return n
+  // Amazon sometimes ships CTR as a ratio (0.0045 = 0.45%)
+  if (n > 0 && n < 1) return n * 100
+  return n
+}
+
+/**
  * Order / purchase count column — not revenue ("Sales" dollars), not sales rank.
  * Matches Purchases, Orders, 7 Day Total Orders, etc.
  */

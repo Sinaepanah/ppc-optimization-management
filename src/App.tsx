@@ -51,7 +51,14 @@ function getGroupForTab(tab: TabId): TabGroup {
 export default function App() {
   const [campaigns, setCampaigns] = useState<Campaign[]>(() => loadCampaigns())
   const [tab, setTab] = useState<TabId>('campaigns')
+  const [navForceCollapsed, setNavForceCollapsed] = useState(false)
   const group: TabGroup = getGroupForTab(tab)
+
+  const selectTab = (id: TabId) => {
+    setTab(id)
+    setNavForceCollapsed(true)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+  }
 
   const {
     profiles,
@@ -84,12 +91,17 @@ export default function App() {
         <p className="app-tagline">Keyword deduplication & relevancy filtering — runs locally, no data sent to servers</p>
       </header>
 
-      <nav className="tab-groups" role="navigation" aria-label="Main sections">
+      <nav
+        className={['tab-groups', navForceCollapsed ? 'tab-groups--force-collapsed' : ''].filter(Boolean).join(' ')}
+        role="navigation"
+        aria-label="Main sections"
+        onMouseLeave={() => setNavForceCollapsed(false)}
+      >
         <div className="tab-groups__primary">
           <button
             type="button"
             className={`tab-groups__primary-btn ${group === 'campaign' ? 'tab-groups__primary-btn--active' : ''}`}
-            onClick={() => setTab('campaigns')}
+            onClick={() => selectTab('campaigns')}
             aria-pressed={group === 'campaign'}
           >
             <LayoutList className="tab-groups__primary-icon" aria-hidden />
@@ -98,7 +110,7 @@ export default function App() {
           <button
             type="button"
             className={`tab-groups__primary-btn ${group === 'ppc' ? 'tab-groups__primary-btn--active' : ''}`}
-            onClick={() => setTab('ppcTool')}
+            onClick={() => selectTab('ppcTool')}
             aria-pressed={group === 'ppc'}
           >
             <TrendingUp className="tab-groups__primary-icon" aria-hidden />
@@ -112,7 +124,7 @@ export default function App() {
                 key={id}
                 type="button"
                 className={`tab-groups__secondary-btn ${tab === id ? 'tab-groups__secondary-btn--active' : ''}`}
-                onClick={() => setTab(id)}
+                onClick={() => selectTab(id)}
                 aria-pressed={tab === id}
               >
                 <Icon className="tab-groups__secondary-icon" aria-hidden />
@@ -125,7 +137,7 @@ export default function App() {
                 key={id}
                 type="button"
                 className={`tab-groups__secondary-btn ${tab === id ? 'tab-groups__secondary-btn--active' : ''}`}
-                onClick={() => setTab(id)}
+                onClick={() => selectTab(id)}
                 aria-pressed={tab === id}
               >
                 <Icon className="tab-groups__secondary-icon" aria-hidden />

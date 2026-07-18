@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from 'react'
-import { ChevronUp, ChevronDown, Info } from 'lucide-react'
+import { ChevronUp, ChevronDown, Info, Layers, Files, Copy, FolderOpen, Filter, Upload, Plus, X } from 'lucide-react'
 import type { Campaign, DuplicateResult } from '../types'
 import {
   buildCampaignFromSearchTermRows,
@@ -279,10 +279,18 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
       </div>
 
       {campaigns.length === 0 ? (
-        <p className="muted">Add campaigns in the Campaign Input tab first.</p>
+        <div className="dedup-empty">
+          <FolderOpen size={28} aria-hidden strokeWidth={1.75} />
+          <p className="muted">Add campaigns in the Campaign Input tab first.</p>
+        </div>
       ) : (
-        <>
+        <div className="dedup-layout">
+          <aside className="dedup-sidebar">
           <div className="dedup-select">
+            <div className="dedup-sidebar-title">
+              <Filter size={18} aria-hidden strokeWidth={2.25} />
+              <span>Sources &amp; mode</span>
+            </div>
             <fieldset className="dedup-mode-fieldset">
               <legend className="dedup-mode-legend">Comparison mode</legend>
               <div className="dedup-mode-options">
@@ -293,6 +301,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                     checked={dedupMode === 'campaigns'}
                     onChange={() => setDedupMode('campaigns')}
                   />
+                  <Files size={15} aria-hidden strokeWidth={2.25} />
                   <span>As is (per file)</span>
                 </label>
                 <label className="dedup-mode-option">
@@ -302,6 +311,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                     checked={dedupMode === 'batches'}
                     onChange={() => setDedupMode('batches')}
                   />
+                  <Layers size={15} aria-hidden strokeWidth={2.25} />
                   <span>Batch mode (aggregate per bundle)</span>
                 </label>
               </div>
@@ -359,7 +369,9 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
               </label>
             </div>
           </div>
+          </aside>
 
+          <div className="dedup-main">
           <div className="dedup-actions">
             {showLargeWarning && (
               <p className="warning">
@@ -389,6 +401,7 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
           {duplicates.length > 0 && (
             <>
               <p className="dedup-summary">
+                <Copy size={16} aria-hidden strokeWidth={2.25} />
                 <strong>{duplicates.length}</strong> terms{' '}
                 {nonDuplicatesOnly && isWithinFileMode
                   ? `matched by exactly 1 ${withinFileLabels.singular} (not in the duplicate pool)${selectedCampaigns.length === 1 ? '' : ' across selected uploads'}`
@@ -397,26 +410,36 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
                     : `appear in ${minCampaigns}+ ${dedupMode === 'batches' ? 'batches' : 'campaigns'}`}
                 .
               </p>
-              <details className="dedup-export-collapsible">
-                <summary className="dedup-export-collapsible__summary">
-                  {nonDuplicatesOnly && isWithinFileMode ? 'Export terms' : 'Export duplicates'}
-                </summary>
-                <ExportControls
-                  items={exportTerms}
-                  format={exportFormat}
-                  onFormatChange={setExportFormat}
-                  onCopy={showCopyFeedback}
-                  onExportCSV={() => {}}
-                  label=""
-                />
-                {copyFeedback && <span className="feedback dedup-export-collapsible__feedback">Copied to clipboard.</span>}
-              </details>
-              {exportTerms.length !== duplicateTerms.length && (
-                <p className="muted dedup-export-hint">
-                  Copy and CSV export use the {exportTerms.length} term{exportTerms.length === 1 ? '' : 's'} currently
-                  visible in the table below ({duplicateTerms.length} total).
-                </p>
-              )}
+              <div className="dedup-export-row">
+                <details className="dedup-export-collapsible">
+                  <summary className="dedup-export-collapsible__summary">
+                    {nonDuplicatesOnly && isWithinFileMode ? 'Export terms' : 'Export duplicates'}
+                  </summary>
+                  <ExportControls
+                    items={exportTerms}
+                    format={exportFormat}
+                    onFormatChange={setExportFormat}
+                    onCopy={showCopyFeedback}
+                    onExportCSV={() => {}}
+                    label=""
+                  />
+                  {copyFeedback && <span className="feedback dedup-export-collapsible__feedback">Copied to clipboard.</span>}
+                </details>
+                {exportTerms.length !== duplicateTerms.length && (
+                  <span
+                    className="dedup-info-tip"
+                    tabIndex={0}
+                    aria-label="About export scope"
+                  >
+                    <Info className="dedup-info-tip__icon" aria-hidden size={16} strokeWidth={2.25} />
+                    <span className="dedup-info-tip__content" role="tooltip">
+                      Copy and CSV export use the {exportTerms.length} term
+                      {exportTerms.length === 1 ? '' : 's'} currently visible in the table below (
+                      {duplicateTerms.length} total).
+                    </span>
+                  </span>
+                )}
+              </div>
               <DupResultsTable
                 results={duplicates}
                 batchMode={dedupMode === 'batches'}
@@ -434,26 +457,38 @@ export function DeduplicationPanel({ campaigns }: DeduplicationPanelProps) {
             !needsReimportForWithinFile &&
             !(dedupMode === 'batches' && !isWithinFileMode && dedupBatchCount < 2) &&
             dedupSources.length >= (isWithinFileMode ? 1 : 2) && (
-              <p className="muted">
-                {nonDuplicatesOnly && isWithinFileMode
-                  ? 'No non-duplicate terms found (every search term is matched by 2+ broad targets).'
-                  : 'No duplicates found for the selected sources and minimum count.'}
-              </p>
+              <div className="dedup-empty dedup-empty--inline">
+                <Copy size={24} aria-hidden strokeWidth={1.75} />
+                <p className="muted">
+                  {nonDuplicatesOnly && isWithinFileMode
+                    ? 'No non-duplicate terms found (every search term is matched by 2+ broad targets).'
+                    : 'No duplicates found for the selected sources and minimum count.'}
+                </p>
+              </div>
             )}
-        </>
+          </div>
+        </div>
       )}
 
       <hr className="section-divider" />
-      <h3>Single-sheet cross-campaign drain finder</h3>
-      <p className="panel-desc">
-        Upload one Sponsored Products/Brands bulk report that already contains many campaigns in a single sheet. This
-        feature finds keywords that repeat across multiple campaign names and lets you filter by campaign count,
-        combined clicks, and either impressions or sales. It is separate from the cross-campaign dedup flow above.
-      </p>
+      <div className="dedup-single-sheet-heading">
+        <h3>Single-sheet cross-campaign drain finder</h3>
+        <span className="dedup-info-tip" tabIndex={0} aria-label="About single-sheet drain finder">
+          <Info className="dedup-info-tip__icon" aria-hidden size={18} strokeWidth={2.25} />
+          <span className="dedup-info-tip__content" role="tooltip">
+            Upload one Sponsored Products/Brands bulk report that already contains many campaigns in a single sheet. This
+            feature finds keywords that repeat across multiple campaign names and lets you filter by campaign count,
+            combined clicks, and either impressions or sales. It is separate from the cross-campaign dedup flow above.
+          </span>
+        </span>
+      </div>
       <div className="dedup-single-sheet">
         <div className="dedup-single-sheet__controls">
           <div className="dedup-single-sheet__field dedup-single-sheet__field--file">
-            <label htmlFor="dedup-single-sheet-input" className="dedup-single-sheet__label">Upload single report</label>
+            <label htmlFor="dedup-single-sheet-input" className="dedup-single-sheet__label">
+              <Upload size={14} aria-hidden strokeWidth={2.25} />
+              Upload single report
+            </label>
             <input
               id="dedup-single-sheet-input"
               type="file"
@@ -622,6 +657,11 @@ function passesZeroSalesOnly(r: DuplicateResult): boolean {
   return dupTotalAttributedSales(r) === 0 && r.totalPurchases === 0
 }
 
+function dupTotalCtrPct(r: DuplicateResult): number | null {
+  if (!(r.totalImpressions > 0) || !Number.isFinite(r.totalClicks)) return null
+  return (r.totalClicks / r.totalImpressions) * 100
+}
+
 function passesMetricThresholds(
   r: DuplicateResult,
   minClicks?: number,
@@ -629,10 +669,16 @@ function passesMetricThresholds(
   minPurch?: number,
   maxPurch?: number,
   minAcosPct?: number,
-  maxAcosPct?: number
+  maxAcosPct?: number,
+  minImpressions?: number,
+  maxImpressions?: number,
+  minCtrPct?: number,
+  maxCtrPct?: number
 ): boolean {
   if (minClicks !== undefined && r.totalClicks < minClicks) return false
   if (maxClicks !== undefined && r.totalClicks > maxClicks) return false
+  if (minImpressions !== undefined && r.totalImpressions < minImpressions) return false
+  if (maxImpressions !== undefined && r.totalImpressions > maxImpressions) return false
   if (minPurch !== undefined && r.totalPurchases < minPurch) return false
   if (maxPurch !== undefined && r.totalPurchases > maxPurch) return false
   if (minAcosPct !== undefined || maxAcosPct !== undefined) {
@@ -640,6 +686,12 @@ function passesMetricThresholds(
     if (acos == null) return false
     if (minAcosPct !== undefined && acos < minAcosPct) return false
     if (maxAcosPct !== undefined && acos > maxAcosPct) return false
+  }
+  if (minCtrPct !== undefined || maxCtrPct !== undefined) {
+    const ctr = dupTotalCtrPct(r)
+    if (ctr == null) return false
+    if (minCtrPct !== undefined && ctr < minCtrPct) return false
+    if (maxCtrPct !== undefined && ctr > maxCtrPct) return false
   }
   return true
 }
@@ -672,6 +724,10 @@ function compareDupRows(a: DuplicateResult, b: DuplicateResult, key: DupSortKey)
 interface MetricFilterValues {
   minClicks: string
   maxClicks: string
+  minImpressions: string
+  maxImpressions: string
+  minCtr: string
+  maxCtr: string
   minPurch: string
   maxPurch: string
   minAcos: string
@@ -682,10 +738,14 @@ interface MetricFilterValues {
 const METRIC_PRESETS_STORAGE_KEY = 'dedup-metric-filter-presets-by-mode'
 const LEGACY_METRIC_PRESETS_STORAGE_KEY = 'dedup-metric-filter-presets'
 
-const DEFAULT_METRIC_PRESETS: [MetricFilterValues, MetricFilterValues] = [
+const DEFAULT_METRIC_PRESETS: MetricFilterValues[] = [
   {
     minClicks: '',
     maxClicks: '',
+    minImpressions: '',
+    maxImpressions: '',
+    minCtr: '',
+    maxCtr: '',
     minPurch: '',
     maxPurch: '3',
     minAcos: '65',
@@ -695,6 +755,10 @@ const DEFAULT_METRIC_PRESETS: [MetricFilterValues, MetricFilterValues] = [
   {
     minClicks: '15',
     maxClicks: '',
+    minImpressions: '',
+    maxImpressions: '',
+    minCtr: '',
+    maxCtr: '',
     minPurch: '',
     maxPurch: '',
     minAcos: '',
@@ -706,6 +770,10 @@ const DEFAULT_METRIC_PRESETS: [MetricFilterValues, MetricFilterValues] = [
 const EMPTY_METRIC_FILTER_VALUES: MetricFilterValues = {
   minClicks: '',
   maxClicks: '',
+  minImpressions: '',
+  maxImpressions: '',
+  minCtr: '',
+  maxCtr: '',
   minPurch: '',
   maxPurch: '',
   minAcos: '',
@@ -713,11 +781,13 @@ const EMPTY_METRIC_FILTER_VALUES: MetricFilterValues = {
   zeroSalesOnly: false,
 }
 
+const MAX_METRIC_PRESETS = 12
+
 type MetricPresetModeKey = 'duplicates' | 'nonDuplicates'
 
 interface MetricPresetModeState {
-  presets: [MetricFilterValues, MetricFilterValues]
-  activePreset: 0 | 1 | null
+  presets: MetricFilterValues[]
+  activePreset: number | null
 }
 
 interface StoredMetricPresetsByMode {
@@ -725,8 +795,8 @@ interface StoredMetricPresetsByMode {
   nonDuplicates: MetricPresetModeState
 }
 
-function cloneDefaultPresets(): [MetricFilterValues, MetricFilterValues] {
-  return [{ ...DEFAULT_METRIC_PRESETS[0] }, { ...DEFAULT_METRIC_PRESETS[1] }]
+function cloneDefaultPresets(): MetricFilterValues[] {
+  return DEFAULT_METRIC_PRESETS.map((p) => ({ ...p }))
 }
 
 function defaultMetricPresetModeState(): MetricPresetModeState {
@@ -740,12 +810,14 @@ function isMetricPresetModeState(v: unknown): v is MetricPresetModeState {
   if (typeof v !== 'object' || v === null) return false
   const o = v as Record<string, unknown>
   const presets = o.presets
+  if (!Array.isArray(presets) || presets.length < 1 || !presets.every(isMetricFilterValues)) return false
+  const active = o.activePreset
   return (
-    Array.isArray(presets) &&
-    presets.length === 2 &&
-    isMetricFilterValues(presets[0]) &&
-    isMetricFilterValues(presets[1]) &&
-    (o.activePreset === null || o.activePreset === 0 || o.activePreset === 1)
+    active === null ||
+    (typeof active === 'number' &&
+      Number.isInteger(active) &&
+      active >= 0 &&
+      active < presets.length)
   )
 }
 
@@ -764,7 +836,18 @@ function loadMetricPresetsByMode(): StoredMetricPresetsByMode {
     const rawV2 = localStorage.getItem(METRIC_PRESETS_STORAGE_KEY)
     if (rawV2) {
       const parsed = JSON.parse(rawV2) as unknown
-      if (isStoredMetricPresetsByMode(parsed)) return parsed
+      if (isStoredMetricPresetsByMode(parsed)) {
+        return {
+          duplicates: {
+            presets: parsed.duplicates.presets.map(coerceMetricFilterValues),
+            activePreset: parsed.duplicates.activePreset,
+          },
+          nonDuplicates: {
+            presets: parsed.nonDuplicates.presets.map(coerceMetricFilterValues),
+            activePreset: parsed.nonDuplicates.activePreset,
+          },
+        }
+      }
     }
     const rawV1 = localStorage.getItem(LEGACY_METRIC_PRESETS_STORAGE_KEY)
     if (rawV1) {
@@ -776,7 +859,10 @@ function loadMetricPresetsByMode(): StoredMetricPresetsByMode {
         isMetricFilterValues(parsed[1])
       ) {
         return {
-          duplicates: { presets: [parsed[0], parsed[1]], activePreset: null },
+          duplicates: {
+            presets: [coerceMetricFilterValues(parsed[0]), coerceMetricFilterValues(parsed[1])],
+            activePreset: null,
+          },
           nonDuplicates: defaultMetricPresetModeState(),
         }
       }
@@ -790,9 +876,14 @@ function loadMetricPresetsByMode(): StoredMetricPresetsByMode {
 function isMetricFilterValues(v: unknown): v is MetricFilterValues {
   if (typeof v !== 'object' || v === null) return false
   const o = v as Record<string, unknown>
+  const str = (k: string) => typeof o[k] === 'string' || o[k] === undefined
   return (
     typeof o.minClicks === 'string' &&
     typeof o.maxClicks === 'string' &&
+    str('minImpressions') &&
+    str('maxImpressions') &&
+    str('minCtr') &&
+    str('maxCtr') &&
     typeof o.minPurch === 'string' &&
     typeof o.maxPurch === 'string' &&
     typeof o.minAcos === 'string' &&
@@ -801,22 +892,47 @@ function isMetricFilterValues(v: unknown): v is MetricFilterValues {
   )
 }
 
+function coerceMetricFilterValues(v: MetricFilterValues): MetricFilterValues {
+  return {
+    minClicks: v.minClicks,
+    maxClicks: v.maxClicks,
+    minImpressions: v.minImpressions ?? '',
+    maxImpressions: v.maxImpressions ?? '',
+    minCtr: v.minCtr ?? '',
+    maxCtr: v.maxCtr ?? '',
+    minPurch: v.minPurch,
+    maxPurch: v.maxPurch,
+    minAcos: v.minAcos,
+    maxAcos: v.maxAcos,
+    zeroSalesOnly: v.zeroSalesOnly,
+  }
+}
+
 function applyMetricFilterValues(values: MetricFilterValues, apply: {
   setMinClicksInput: (v: string) => void
   setMaxClicksInput: (v: string) => void
+  setMinImpressionsInput: (v: string) => void
+  setMaxImpressionsInput: (v: string) => void
+  setMinCtrInput: (v: string) => void
+  setMaxCtrInput: (v: string) => void
   setMinPurchInput: (v: string) => void
   setMaxPurchInput: (v: string) => void
   setMinAcosInput: (v: string) => void
   setMaxAcosInput: (v: string) => void
   setZeroSalesOnly: (v: boolean) => void
 }) {
-  apply.setMinClicksInput(values.minClicks)
-  apply.setMaxClicksInput(values.maxClicks)
-  apply.setMinPurchInput(values.minPurch)
-  apply.setMaxPurchInput(values.maxPurch)
-  apply.setMinAcosInput(values.minAcos)
-  apply.setMaxAcosInput(values.maxAcos)
-  apply.setZeroSalesOnly(values.zeroSalesOnly)
+  const v = coerceMetricFilterValues(values)
+  apply.setMinClicksInput(v.minClicks)
+  apply.setMaxClicksInput(v.maxClicks)
+  apply.setMinImpressionsInput(v.minImpressions)
+  apply.setMaxImpressionsInput(v.maxImpressions)
+  apply.setMinCtrInput(v.minCtr)
+  apply.setMaxCtrInput(v.maxCtr)
+  apply.setMinPurchInput(v.minPurch)
+  apply.setMaxPurchInput(v.maxPurch)
+  apply.setMinAcosInput(v.minAcos)
+  apply.setMaxAcosInput(v.maxAcos)
+  apply.setZeroSalesOnly(v.zeroSalesOnly)
 }
 
 function CopyableNormalizedTerm({ term }: { term: string }) {
@@ -870,13 +986,19 @@ function DupResultsTable({
   const [presetModes, setPresetModes] = useState(loadMetricPresetsByMode)
   const initialMetricFilters = useMemo(() => {
     const modeState = loadMetricPresetsByMode()[presetModeKey]
-    return modeState.activePreset !== null
-      ? modeState.presets[modeState.activePreset]
-      : EMPTY_METRIC_FILTER_VALUES
+    const raw =
+      modeState.activePreset !== null
+        ? modeState.presets[modeState.activePreset]
+        : EMPTY_METRIC_FILTER_VALUES
+    return coerceMetricFilterValues(raw ?? EMPTY_METRIC_FILTER_VALUES)
   }, [presetModeKey])
   const [filterQuery, setFilterQuery] = useState('')
   const [minClicksInput, setMinClicksInput] = useState(initialMetricFilters.minClicks)
   const [maxClicksInput, setMaxClicksInput] = useState(initialMetricFilters.maxClicks)
+  const [minImpressionsInput, setMinImpressionsInput] = useState(initialMetricFilters.minImpressions)
+  const [maxImpressionsInput, setMaxImpressionsInput] = useState(initialMetricFilters.maxImpressions)
+  const [minCtrInput, setMinCtrInput] = useState(initialMetricFilters.minCtr)
+  const [maxCtrInput, setMaxCtrInput] = useState(initialMetricFilters.maxCtr)
   const [minPurchInput, setMinPurchInput] = useState(initialMetricFilters.minPurch)
   const [maxPurchInput, setMaxPurchInput] = useState(initialMetricFilters.maxPurch)
   const [minAcosInput, setMinAcosInput] = useState(initialMetricFilters.minAcos)
@@ -915,6 +1037,10 @@ function DupResultsTable({
     const filterApply = {
       setMinClicksInput,
       setMaxClicksInput,
+      setMinImpressionsInput,
+      setMaxImpressionsInput,
+      setMinCtrInput,
+      setMaxCtrInput,
       setMinPurchInput,
       setMaxPurchInput,
       setMinAcosInput,
@@ -935,8 +1061,9 @@ function DupResultsTable({
       if (activeMetricPreset === null) return
       setPresetModes((prev) => {
         const mode = prev[presetModeKey]
-        const nextPresets: [MetricFilterValues, MetricFilterValues] = [mode.presets[0], mode.presets[1]]
-        nextPresets[activeMetricPreset] = { ...nextPresets[activeMetricPreset], ...patch }
+        const nextPresets = mode.presets.map((p, i) =>
+          i === activeMetricPreset ? { ...p, ...patch } : p
+        )
         return {
           ...prev,
           [presetModeKey]: { ...mode, presets: nextPresets },
@@ -950,27 +1077,69 @@ function DupResultsTable({
     () => ({
       minClicks: parseOptionalNonNegNumber(minClicksInput),
       maxClicks: parseOptionalNonNegNumber(maxClicksInput),
+      minImpressions: parseOptionalNonNegNumber(minImpressionsInput),
+      maxImpressions: parseOptionalNonNegNumber(maxImpressionsInput),
+      minCtr: parseOptionalNonNegNumber(minCtrInput),
+      maxCtr: parseOptionalNonNegNumber(maxCtrInput),
       minPurch: parseOptionalNonNegNumber(minPurchInput),
       maxPurch: parseOptionalNonNegNumber(maxPurchInput),
       minAcos: parseOptionalNonNegNumber(minAcosInput),
       maxAcos: parseOptionalNonNegNumber(maxAcosInput),
     }),
-    [minClicksInput, maxClicksInput, minPurchInput, maxPurchInput, minAcosInput, maxAcosInput]
+    [
+      minClicksInput,
+      maxClicksInput,
+      minImpressionsInput,
+      maxImpressionsInput,
+      minCtrInput,
+      maxCtrInput,
+      minPurchInput,
+      maxPurchInput,
+      minAcosInput,
+      maxAcosInput,
+    ]
   )
 
   const afterMetricFilters = useMemo(() => {
-    const { minClicks, maxClicks, minPurch, maxPurch, minAcos, maxAcos } = metricParsed
+    const {
+      minClicks,
+      maxClicks,
+      minImpressions,
+      maxImpressions,
+      minCtr,
+      maxCtr,
+      minPurch,
+      maxPurch,
+      minAcos,
+      maxAcos,
+    } = metricParsed
     let list = results
     if (
       minClicks !== undefined ||
       maxClicks !== undefined ||
+      minImpressions !== undefined ||
+      maxImpressions !== undefined ||
+      minCtr !== undefined ||
+      maxCtr !== undefined ||
       minPurch !== undefined ||
       maxPurch !== undefined ||
       minAcos !== undefined ||
       maxAcos !== undefined
     ) {
       list = list.filter((r) =>
-        passesMetricThresholds(r, minClicks, maxClicks, minPurch, maxPurch, minAcos, maxAcos)
+        passesMetricThresholds(
+          r,
+          minClicks,
+          maxClicks,
+          minPurch,
+          maxPurch,
+          minAcos,
+          maxAcos,
+          minImpressions,
+          maxImpressions,
+          minCtr,
+          maxCtr
+        )
       )
     }
     if (zeroSalesOnly) {
@@ -1101,11 +1270,16 @@ function DupResultsTable({
   }
 
   const applyMetricPreset = useCallback(
-    (index: 0 | 1) => {
+    (index: number) => {
       const values = metricPresets[index]
+      if (!values) return
       applyMetricFilterValues(values, {
         setMinClicksInput,
         setMaxClicksInput,
+        setMinImpressionsInput,
+        setMaxImpressionsInput,
+        setMinCtrInput,
+        setMaxCtrInput,
         setMinPurchInput,
         setMaxPurchInput,
         setMinAcosInput,
@@ -1122,10 +1296,86 @@ function DupResultsTable({
     [metricPresets, presetModeKey]
   )
 
+  const addMetricPreset = useCallback(() => {
+    setPresetModes((prev) => {
+      const mode = prev[presetModeKey]
+      if (mode.presets.length >= MAX_METRIC_PRESETS) return prev
+      const nextPresets = [...mode.presets, { ...EMPTY_METRIC_FILTER_VALUES }]
+      const newIndex = nextPresets.length - 1
+      return {
+        ...prev,
+        [presetModeKey]: { presets: nextPresets, activePreset: newIndex },
+      }
+    })
+    applyMetricFilterValues(EMPTY_METRIC_FILTER_VALUES, {
+      setMinClicksInput,
+      setMaxClicksInput,
+      setMinImpressionsInput,
+      setMaxImpressionsInput,
+      setMinCtrInput,
+      setMaxCtrInput,
+      setMinPurchInput,
+      setMaxPurchInput,
+      setMinAcosInput,
+      setMaxAcosInput,
+      setZeroSalesOnly,
+    })
+    selectAllAfterPresetRef.current = true
+    setPresetSelectNonce((n) => n + 1)
+  }, [presetModeKey])
+
+  const deleteMetricPreset = useCallback(
+    (index: number) => {
+      const mode = presetModes[presetModeKey]
+      if (mode.presets.length <= 1 || index < 0 || index >= mode.presets.length) return
+
+      const nextPresets = mode.presets.filter((_, i) => i !== index)
+      let nextActive: number | null = mode.activePreset
+      if (mode.activePreset === null) {
+        nextActive = null
+      } else if (mode.activePreset === index) {
+        nextActive = Math.min(index, nextPresets.length - 1)
+      } else if (mode.activePreset > index) {
+        nextActive = mode.activePreset - 1
+      }
+
+      setPresetModes((prev) => ({
+        ...prev,
+        [presetModeKey]: { presets: nextPresets, activePreset: nextActive },
+      }))
+
+      if (mode.activePreset === index && nextActive !== null) {
+        const values = nextPresets[nextActive]
+        if (values) {
+          applyMetricFilterValues(values, {
+            setMinClicksInput,
+            setMaxClicksInput,
+            setMinImpressionsInput,
+            setMaxImpressionsInput,
+            setMinCtrInput,
+            setMaxCtrInput,
+            setMinPurchInput,
+            setMaxPurchInput,
+            setMinAcosInput,
+            setMaxAcosInput,
+            setZeroSalesOnly,
+          })
+          selectAllAfterPresetRef.current = true
+          setPresetSelectNonce((n) => n + 1)
+        }
+      }
+    },
+    [presetModeKey, presetModes]
+  )
+
   const textFilterActive = filterQuery.trim().length > 0
   const metricFilterActive =
     minClicksInput.trim() !== '' ||
     maxClicksInput.trim() !== '' ||
+    minImpressionsInput.trim() !== '' ||
+    maxImpressionsInput.trim() !== '' ||
+    minCtrInput.trim() !== '' ||
+    maxCtrInput.trim() !== '' ||
     minPurchInput.trim() !== '' ||
     maxPurchInput.trim() !== '' ||
     minAcosInput.trim() !== '' ||
@@ -1137,22 +1387,71 @@ function DupResultsTable({
     <>
       <div className="dedup-metric-filters" aria-label="Filter by combined totals">
         <div className="dedup-metric-filters__intro">
-          Combined totals (applies to each keyword row — same logic in As is and batch mode)
+          <span>Combined totals</span>
+          <span
+            className="dedup-info-tip"
+            tabIndex={0}
+            aria-label="About combined totals filters"
+          >
+            <Info className="dedup-info-tip__icon" aria-hidden size={16} strokeWidth={2.25} />
+            <span className="dedup-info-tip__content" role="tooltip">
+              Applies to each keyword row — same logic in As is and batch mode. Uses the combined row totals (all
+              sources / all batches). ACOS uses spend÷sales when your CSV has those columns, otherwise the report&apos;s
+              own ACOS column (orders-weighted for combined rows). CTR uses clicks÷impressions×100 from combined
+              totals (impressions from the CSV, or inferred from CTR when impressions are missing). Zero sales excludes
+              terms with any purchases/orders or attributed sales revenue. Leave fields blank to skip.
+            </span>
+          </span>
         </div>
         <div className="dedup-metric-filters__presets">
+          {metricPresets.map((_, index) => (
+            <div
+              key={index}
+              className={[
+                'dedup-metric-filters__preset',
+                activeMetricPreset === index ? 'dedup-metric-filters__preset--active' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              <button
+                type="button"
+                className={[
+                  'btn',
+                  'btn--small',
+                  'dedup-metric-filters__preset-btn',
+                  activeMetricPreset === index ? 'btn--primary' : 'btn--secondary',
+                ].join(' ')}
+                onClick={() => applyMetricPreset(index)}
+              >
+                Preset {index + 1}
+              </button>
+              {metricPresets.length > 1 && (
+                <button
+                  type="button"
+                  className="dedup-metric-filters__preset-delete"
+                  onClick={() => deleteMetricPreset(index)}
+                  aria-label={`Delete Preset ${index + 1}`}
+                  title={`Delete Preset ${index + 1}`}
+                >
+                  <X size={12} strokeWidth={2.5} aria-hidden />
+                </button>
+              )}
+            </div>
+          ))}
           <button
             type="button"
-            className={['btn', 'btn--small', activeMetricPreset === 0 ? 'btn--primary' : 'btn--secondary'].join(' ')}
-            onClick={() => applyMetricPreset(0)}
+            className="dedup-metric-filters__add-preset"
+            onClick={addMetricPreset}
+            disabled={metricPresets.length >= MAX_METRIC_PRESETS}
+            aria-label="Add preset"
+            title={
+              metricPresets.length >= MAX_METRIC_PRESETS
+                ? `Maximum of ${MAX_METRIC_PRESETS} presets`
+                : 'Add preset'
+            }
           >
-            Preset 1
-          </button>
-          <button
-            type="button"
-            className={['btn', 'btn--small', activeMetricPreset === 1 ? 'btn--primary' : 'btn--secondary'].join(' ')}
-            onClick={() => applyMetricPreset(1)}
-          >
-            Preset 2
+            <Plus size={22} strokeWidth={2.5} aria-hidden />
           </button>
           {withinFileMode && onNonDuplicatesOnlyChange && (
             <label
@@ -1201,6 +1500,70 @@ function DupResultsTable({
                 const v = e.target.value
                 setMaxClicksInput(v)
                 patchActivePreset({ maxClicks: v })
+              }}
+              autoComplete="off"
+            />
+          </label>
+          <label className="dedup-metric-filters__field">
+            <span className="dedup-metric-filters__field-label">Min impressions</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              className="dedup-metric-filters__input"
+              placeholder="—"
+              value={minImpressionsInput}
+              onChange={(e) => {
+                const v = e.target.value
+                setMinImpressionsInput(v)
+                patchActivePreset({ minImpressions: v })
+              }}
+              autoComplete="off"
+            />
+          </label>
+          <label className="dedup-metric-filters__field">
+            <span className="dedup-metric-filters__field-label">Max impressions</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              className="dedup-metric-filters__input"
+              placeholder="—"
+              value={maxImpressionsInput}
+              onChange={(e) => {
+                const v = e.target.value
+                setMaxImpressionsInput(v)
+                patchActivePreset({ maxImpressions: v })
+              }}
+              autoComplete="off"
+            />
+          </label>
+          <label className="dedup-metric-filters__field">
+            <span className="dedup-metric-filters__field-label">Min CTR %</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="dedup-metric-filters__input"
+              placeholder="—"
+              value={minCtrInput}
+              onChange={(e) => {
+                const v = e.target.value
+                setMinCtrInput(v)
+                patchActivePreset({ minCtr: v })
+              }}
+              autoComplete="off"
+            />
+          </label>
+          <label className="dedup-metric-filters__field">
+            <span className="dedup-metric-filters__field-label">Max CTR %</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="dedup-metric-filters__input"
+              placeholder="—"
+              value={maxCtrInput}
+              onChange={(e) => {
+                const v = e.target.value
+                setMaxCtrInput(v)
+                patchActivePreset({ maxCtr: v })
               }}
               autoComplete="off"
             />
@@ -1285,9 +1648,6 @@ function DupResultsTable({
             </span>
           </label>
         </div>
-        <p className="dedup-metric-filters__hint">
-          Uses the combined row totals (all sources / all batches). ACOS uses spend÷sales when your CSV has those columns, otherwise the report's own ACOS column (orders-weighted for combined rows). Zero sales excludes terms with any purchases/orders or attributed sales revenue. Leave fields blank to skip.
-        </p>
       </div>
       <div className="dedup-table-filter" role="search">
         <label htmlFor="dedup-table-filter-input" className="dedup-table-filter__label">

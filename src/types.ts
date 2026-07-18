@@ -1,5 +1,6 @@
 export interface TermMatchMetrics {
   clicks: number
+  impressions: number
   purchases: number
   spend: number
   attributedSales: number
@@ -21,6 +22,8 @@ export interface Campaign {
   normalizedToOriginal: Map<string, string>
   /** Total clicks per normalized term within this file (summed when the same term appears on multiple rows). From the CSV "Clicks" column when present; otherwise 0. */
   normalizedToClicks: Map<string, number>
+  /** Total impressions per normalized term from the CSV Impressions column when present; otherwise 0. */
+  normalizedToImpressions: Map<string, number>
   /** Total purchases (order count) per normalized term from CSV columns like Purchases / Orders / 7 Day Total Orders when present; otherwise 0. */
   normalizedToPurchases: Map<string, number>
   /** Sum of ad spend (currency) per normalized term when a Spend/Cost column is present; otherwise 0. */
@@ -64,6 +67,10 @@ export interface DuplicateResult {
   clicksByCampaign: Map<string, number>
   /** Sum of clicks across those campaigns */
   totalClicks: number
+  /** Impressions for this term in each campaign (file) that contains it */
+  impressionsByCampaign: Map<string, number>
+  /** Sum of impressions across those campaigns */
+  totalImpressions: number
   /** Purchase count for this term in each campaign (file) */
   purchasesByCampaign: Map<string, number>
   /** Sum of purchases across those campaigns */

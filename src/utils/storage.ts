@@ -66,6 +66,23 @@ function ensureMaps(campaigns: Campaign[]): Campaign[] {
     for (const k of normalizedToOriginal.keys()) {
       if (!normalizedToClicks.has(k)) normalizedToClicks.set(k, 0)
     }
+    let normalizedToImpressions: Map<string, number>
+    if (c.normalizedToImpressions instanceof Map) {
+      normalizedToImpressions = c.normalizedToImpressions
+    } else if (
+      c.normalizedToImpressions &&
+      typeof c.normalizedToImpressions === 'object' &&
+      'data' in c.normalizedToImpressions
+    ) {
+      normalizedToImpressions = new Map(
+        (c.normalizedToImpressions as unknown as { data: [string, number][] }).data || []
+      )
+    } else {
+      normalizedToImpressions = new Map()
+    }
+    for (const k of normalizedToOriginal.keys()) {
+      if (!normalizedToImpressions.has(k)) normalizedToImpressions.set(k, 0)
+    }
     let normalizedToPurchases: Map<string, number>
     if (c.normalizedToPurchases instanceof Map) {
       normalizedToPurchases = c.normalizedToPurchases
@@ -141,6 +158,7 @@ function ensureMaps(campaigns: Campaign[]): Campaign[] {
       terms: c.terms,
       normalizedToOriginal,
       normalizedToClicks,
+      normalizedToImpressions,
       normalizedToPurchases,
       normalizedToSpend,
       normalizedToAttributedSales,

@@ -1,4 +1,5 @@
 import { useState, useCallback, type FC } from 'react'
+import { Info, Upload, Tag, FolderOpen, FileSpreadsheet, Trash2 } from 'lucide-react'
 import type { Campaign } from '../types'
 import {
   parseCSV,
@@ -144,99 +145,127 @@ export const CampaignInput: FC<CampaignInputProps> = ({ campaigns, onCampaignsCh
 
   return (
     <section className="panel campaign-input">
-      <h2>Campaign Input</h2>
-      <p className="panel-desc">
-        Add campaigns by uploading one or more CSV files (bulk). Each file becomes its own campaign. Terms are
-        deduplicated per campaign. If the file includes a <strong>Clicks</strong> column, totals are summed per
-        keyword for the Deduplication tab.
-      </p>
-
-      <div className="campaign-input__add">
-        <div className="campaign-input__name">
-          <label htmlFor="campaign-name">Campaign name</label>
-          <input
-            id="campaign-name"
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Optional prefix; combined with file name when uploading multiple files"
-          />
-        </div>
-
-        <div className="campaign-input__csv">
-          <label htmlFor="campaign-csv-input">Upload CSV (bulk select)</label>
-          <input
-            id="campaign-csv-input"
-            type="file"
-            accept=".csv,.txt"
-            multiple
-            onChange={handleFileChange}
-            className="campaign-input__file"
-            disabled={csvLoading}
-          />
-          {csvLoading && <p className="muted campaign-input__csv-status">Loading files…</p>}
-        </div>
+      <div className="campaign-input__heading">
+        <h2>Campaign Input</h2>
+        <span className="campaign-input__info-tip" tabIndex={0} aria-label="About Campaign Input">
+          <Info className="campaign-input__info-tip-icon" aria-hidden size={18} strokeWidth={2.25} />
+          <span className="campaign-input__info-tip-content" role="tooltip">
+            Add campaigns by uploading one or more CSV files (bulk). Each file becomes its own campaign. Terms are
+            deduplicated per campaign. If the file includes a <strong>Clicks</strong> column, totals are summed per
+            keyword for the Deduplication tab.
+          </span>
+        </span>
       </div>
 
-      {showColumnSelector && csvRows && (
-        <div className="campaign-input__modal">
-          <CSVColumnSelector
-            rows={csvRows}
-            selectedIndex={csvColumnIndex}
-            onSelect={setCsvColumnIndex}
-            onConfirm={handleCsvConfirm}
-            onCancel={() => {
-              setCsvRows(null)
-              setPendingFiles(null)
-              setShowColumnSelector(false)
-            }}
-          />
-        </div>
-      )}
+      <div className="campaign-input__layout">
+        <aside className="campaign-input__sidebar">
+          <div className="campaign-input__add">
+            <div className="campaign-input__sidebar-title">
+              <Upload size={18} aria-hidden strokeWidth={2.25} />
+              <span>Add campaigns</span>
+            </div>
 
-      <div className="campaign-input__list">
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '1rem',
-            flexWrap: 'wrap',
-            marginBottom: campaigns.length > 0 ? '0.75rem' : 0,
-          }}
-        >
-          <h3 style={{ margin: 0 }}>Your campaigns</h3>
-          {campaigns.length > 0 && (
-            <button
-              type="button"
-              className="btn btn--small btn--danger"
-              onClick={removeAllCampaigns}
-              aria-label="Remove all campaigns"
-            >
-              Remove all
-            </button>
+            <div className="campaign-input__name">
+              <label htmlFor="campaign-name">
+                <Tag size={15} aria-hidden strokeWidth={2.25} />
+                Campaign name
+              </label>
+              <input
+                id="campaign-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Optional prefix; combined with file name when uploading multiple files"
+              />
+            </div>
+
+            <div className="campaign-input__csv">
+              <label htmlFor="campaign-csv-input">
+                <FileSpreadsheet size={15} aria-hidden strokeWidth={2.25} />
+                Upload CSV (bulk select)
+              </label>
+              <div className="campaign-input__upload-zone">
+                <input
+                  id="campaign-csv-input"
+                  type="file"
+                  accept=".csv,.txt"
+                  multiple
+                  onChange={handleFileChange}
+                  className="campaign-input__file"
+                  disabled={csvLoading}
+                />
+              </div>
+              {csvLoading && <p className="muted campaign-input__csv-status">Loading files…</p>}
+            </div>
+          </div>
+        </aside>
+
+        <div className="campaign-input__main">
+          {showColumnSelector && csvRows && (
+            <div className="campaign-input__modal">
+              <CSVColumnSelector
+                rows={csvRows}
+                selectedIndex={csvColumnIndex}
+                onSelect={setCsvColumnIndex}
+                onConfirm={handleCsvConfirm}
+                onCancel={() => {
+                  setCsvRows(null)
+                  setPendingFiles(null)
+                  setShowColumnSelector(false)
+                }}
+              />
+            </div>
           )}
-        </div>
-        {campaigns.length === 0 ? (
-          <p className="muted">No campaigns yet. Upload one or more CSV files above.</p>
-        ) : (
-          <ul>
-            {campaigns.map((c) => (
-              <li key={c.id} className="campaign-input__item">
-                <span className="campaign-input__item-name">{c.name}</span>
-                <span className="campaign-input__item-count">{c.terms.length} unique terms</span>
+
+          <div className="campaign-input__list">
+            <div className="campaign-input__list-header">
+              <h3>
+                <FolderOpen size={18} aria-hidden strokeWidth={2.25} />
+                Your campaigns
+                {campaigns.length > 0 && (
+                  <span className="campaign-input__list-count">{campaigns.length}</span>
+                )}
+              </h3>
+              {campaigns.length > 0 && (
                 <button
                   type="button"
                   className="btn btn--small btn--danger"
-                  onClick={() => removeCampaign(c.id)}
-                  aria-label={`Remove ${c.name}`}
+                  onClick={removeAllCampaigns}
+                  aria-label="Remove all campaigns"
                 >
-                  Remove
+                  <Trash2 size={14} aria-hidden strokeWidth={2.25} />
+                  Remove all
                 </button>
-              </li>
-            ))}
-          </ul>
-        )}
+              )}
+            </div>
+            {campaigns.length === 0 ? (
+              <div className="campaign-input__empty">
+                <FileSpreadsheet size={28} aria-hidden strokeWidth={1.75} />
+                <p className="muted">No campaigns yet. Upload one or more CSV files above.</p>
+              </div>
+            ) : (
+              <ul>
+                {campaigns.map((c) => (
+                  <li key={c.id} className="campaign-input__item">
+                    <span className="campaign-input__item-icon" aria-hidden>
+                      <FileSpreadsheet size={16} strokeWidth={2.25} />
+                    </span>
+                    <span className="campaign-input__item-name">{c.name}</span>
+                    <span className="campaign-input__item-count">{c.terms.length} unique terms</span>
+                    <button
+                      type="button"
+                      className="btn btn--small btn--danger"
+                      onClick={() => removeCampaign(c.id)}
+                      aria-label={`Remove ${c.name}`}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   )
