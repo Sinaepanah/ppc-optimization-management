@@ -19,8 +19,24 @@ export function PpcToolPage() {
 
   const handlePaste = useCallback((e: ClipboardEvent) => {
     if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
-    const file = e.clipboardData?.files[0]
-    if (!file?.type.startsWith('image/')) return
+
+    let file: File | null = null
+    const items = e.clipboardData?.items
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        if (item?.type?.startsWith('image/')) {
+          file = item.getAsFile()
+          if (file) break
+        }
+      }
+    }
+    if (!file) {
+      const fromFiles = e.clipboardData?.files?.[0]
+      if (fromFiles?.type.startsWith('image/')) file = fromFiles
+    }
+    if (!file) return
+
     e.preventDefault()
     if (pasteTarget === 'adLevel' && adLevelRunOcrRef.current) {
       adLevelRunOcrRef.current(file)

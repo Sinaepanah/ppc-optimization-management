@@ -3,6 +3,7 @@ import cors from 'cors'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { extractPpcFromScreenshot } from './ppcVisionExtract.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = join(__dirname, 'data')
@@ -10,9 +11,36 @@ const CAMPAIGNS_FILE = join(DATA_DIR, 'campaigns.json')
 const PROFILES_FILE = join(DATA_DIR, 'profiles.json')
 const ACTIVE_PROFILE_FILE = join(DATA_DIR, 'activeProfileId.json')
 
+/** Load KEY=VALUE from a .env file into process.env if not already set. */
+async function loadEnvFile(filePath) {
+  try {
+    const text = await readFile(filePath, 'utf8')
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const eq = trimmed.indexOf('=')
+      if (eq <= 0) continue
+      const key = trimmed.slice(0, eq).trim()
+      let value = trimmed.slice(eq + 1).trim()
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1)
+      }
+      if (key && process.env[key] === undefined) process.env[key] = value
+    }
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e
+  }
+}
+
+await loadEnvFile(join(__dirname, '.env'))
+await loadEnvFile(join(__dirname, '..', '.env'))
+
 const app = express()
 app.use(cors())
-app.use(express.json({ limit: '10mb' }))
+app.use(express.json({ limit: '20mb' }))
 
 async function ensureDataDir() {
   try {
@@ -223,8 +251,30 @@ app.post('/api/acos/recommendation', async (req, res) => {
   }
 })
 
+/** Exact Bid Tools: screenshot → ad-level / placement JSON via OpenAI vision */
+app.post('/api/ppc/extract-screenshot', async (req, res) => {
+  try {
+    const { imageBase64, mimeType, mode } = req.body ?? {}
+    const data = await extractPpcFromScreenshot({
+      imageBase64,
+      mimeType: mimeType || 'image/png',
+      mode,
+      apiKey: process.env.OPENAI_API_KEY,
+      model: process.env.OPENAI_VISION_MODEL,
+    })
+    res.json({ ok: true, mode, data })
+  } catch (e) {
+    console.error('POST /api/ppc/extract-screenshot', e)
+    const status = Number.isInteger(e.status) ? e.status : 500
+    res.status(status).json({ error: String(e.message || e) })
+  }
+})
+
 const PORT = process.env.PORT || 3001
 await ensureDataDir()
 app.listen(PORT, () => {
   console.log(`Backend running at http://localhost:${PORT}`)
+  if (!process.env.OPENAI_API_KEY) {
+    console.warn('OPENAI_API_KEY not set — Exact Bid Tools screenshot extract will return 503')
+  }
 })

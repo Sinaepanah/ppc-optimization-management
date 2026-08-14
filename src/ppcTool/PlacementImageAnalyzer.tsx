@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { createWorker, PSM } from 'tesseract.js'
-import { preprocessPlacementForOcr } from './utils/placementPreprocess'
-import { parsePlacementOcrResult, type ExtractedPlacementData } from './utils/placementParser'
+import { extractScreenshotViaVision } from './utils/visionExtract'
+import type { ExtractedPlacementData } from './utils/placementParser'
 
 interface PlacementImageAnalyzerProps {
   isSelected?: boolean
@@ -12,38 +11,26 @@ interface PlacementImageAnalyzerProps {
 
 export function PlacementImageAnalyzer({ isSelected, onSelect, runOcrRef, onDataChange }: PlacementImageAnalyzerProps) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
-  const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const runOcr = useCallback(async (file: File) => {
     setStatus('loading')
-    setProgress(0)
     setError(null)
     try {
-      const worker = await createWorker('eng', 1, {
-        logger: (m) => {
-          if (m.status === 'recognizing text') setProgress(Math.round(m.progress * 100))
-        },
-      })
-      await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK })
-      const preprocessed = await preprocessPlacementForOcr(file)
-      const { data: ocrData } = await worker.recognize(preprocessed, {}, { blocks: true, tsv: true })
-      await worker.terminate()
-      const extracted = parsePlacementOcrResult(ocrData.text, ocrData.blocks, ocrData.tsv)
+      const extracted = (await extractScreenshotViaVision(file, 'placement')) as ExtractedPlacementData
       onDataChange?.(extracted)
       setStatus('done')
-      setProgress(100)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'OCR failed')
+      setError(err instanceof Error ? err.message : 'Extract failed')
       setStatus('error')
     }
-  }, [])
+  }, [onDataChange])
 
   const handleFile = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
-      if (file?.type.startsWith('image/')) runOcr(file)
+      if (file && file.type.startsWith('image/')) runOcr(file)
       e.target.value = ''
     },
     [runOcr]
@@ -94,9 +81,9 @@ export function PlacementImageAnalyzer({ isSelected, onSelect, runOcrRef, onData
         {status === 'loading' ? (
           <div className="ppc-upload-status">
             <div className="ppc-progress-bar">
-              <div className="ppc-progress-fill" style={{ width: `${progress}%` }} />
+              <div className="ppc-progress-fill" style={{ width: '60%' }} />
             </div>
-            <p className="ppc-progress-text">Analyzing placement table… {progress}%</p>
+            <p className="ppc-progress-text">Reading placement table…</p>
           </div>
         ) : (
           <div className="ppc-upload-content">

@@ -1,7 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { createWorker, PSM } from 'tesseract.js'
-import { preprocessForOcr } from './utils/imagePreprocess'
-import { parseAdLevelOcrResult } from './utils/adLevelParser'
+import { extractScreenshotViaVision } from './utils/visionExtract'
 
 const AD_LEVEL_KEYS = ['bid', 'impressions', 'clicks', 'totalCost', 'cpc', 'purchases', 'sales', 'acos'] as const
 
@@ -14,36 +12,22 @@ interface ImageUploadAnalyzerProps {
 
 export function ImageUploadAnalyzer({ isSelected, onSelect, runOcrRef, onDataChange }: ImageUploadAnalyzerProps) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
-  const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const runOcr = useCallback(async (file: File) => {
     setStatus('loading')
-    setProgress(0)
     setError(null)
     try {
-      const worker = await createWorker('eng', 1, {
-        logger: (m) => {
-          if (m.status === 'recognizing text') setProgress(Math.round(m.progress * 100))
-        },
-      })
-      await worker.setParameters({
-        tessedit_pageseg_mode: PSM.SINGLE_COLUMN,
-      })
-      const preprocessed = await preprocessForOcr(file)
-      const { data } = await worker.recognize(preprocessed, {}, { blocks: true, tsv: true })
-      await worker.terminate()
-      const extracted = parseAdLevelOcrResult(data.text, data.blocks, data.tsv)
+      const extracted = (await extractScreenshotViaVision(file, 'adLevel')) as Record<string, string>
       const next: Record<string, string> = {}
       for (const k of AD_LEVEL_KEYS) {
         next[k] = extracted[k] ?? ''
       }
       onDataChange?.(next)
       setStatus('done')
-      setProgress(100)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'OCR failed')
+      setError(err instanceof Error ? err.message : 'Extract failed')
       setStatus('error')
     }
   }, [onDataChange])
@@ -102,9 +86,9 @@ export function ImageUploadAnalyzer({ isSelected, onSelect, runOcrRef, onDataCha
         {status === 'loading' ? (
           <div className="ppc-upload-status">
             <div className="ppc-progress-bar">
-              <div className="ppc-progress-fill" style={{ width: `${progress}%` }} />
+              <div className="ppc-progress-fill" style={{ width: '60%' }} />
             </div>
-            <p className="ppc-progress-text">Analyzing image… {progress}%</p>
+            <p className="ppc-progress-text">Reading screenshot…</p>
           </div>
         ) : (
           <div className="ppc-upload-content">
