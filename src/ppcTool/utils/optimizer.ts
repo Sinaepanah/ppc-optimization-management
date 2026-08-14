@@ -48,10 +48,34 @@ export interface OptimizationResult {
   }
 }
 
-const MAX_BID_CHANGE_PCT = 25
-const MAX_PLACEMENT_CHANGE_PCT = 50
+const MAX_BID_CHANGE_PCT = 20
+/** Expert practice: move placement multipliers in small steps (~10–25%), not 50% jumps. */
+const MAX_PLACEMENT_CHANGE_PCT = 25
+const MIN_PLACEMENT_ADJ = 0 // Amazon Sponsored Products floor (no negative placement %)
+const MAX_PLACEMENT_ADJ = 900
+/** Wait for enough placement clicks before changing multipliers (noise control). */
+const MIN_PLACEMENT_CLICKS = 20
 const MIN_BID = 0.02
 const LOW_IMPRESSION_THRESHOLD = 100
+
+/**
+ * Placement amplify guard (expert practice):
+ * Only block further increases when this placement's CPC already exceeds what
+ * its own revenue-per-click can afford at target ACoS.
+ * Does not force cuts on profitable placements (ACOS gate handles cuts).
+ */
+function canAmplifyPlacement(
+  placeCpc: number,
+  placeSales: number,
+  placeClicks: number,
+  targetAcosDecimal: number
+): boolean {
+  if (!(placeClicks > 0) || !(placeSales > 0) || !(targetAcosDecimal > 0)) return true
+  const placeRpc = placeSales / placeClicks
+  const placeEconMaxCpc = placeRpc * targetAcosDecimal
+  if (!(placeEconMaxCpc > 0)) return true
+  return !(placeCpc > placeEconMaxCpc * 1.2)
+}
 
 function parseNum(s: string): number {
   if (!s || typeof s !== 'string') return 0
@@ -185,41 +209,63 @@ export function optimize(
     const product = parsePlacementRow(placementData.productPages)
 
     const placements = [
-      { key: 'topOfSearch' as const, data: top, row: placementData.topOfSearch },
-      { key: 'restOfSearch' as const, data: rest, row: placementData.restOfSearch },
-      { key: 'productPages' as const, data: product, row: placementData.productPages },
+      { key: 'topOfSearch' as const, data: top, row: placementData.topOfSearch, label: 'Top of Search' },
+      { key: 'restOfSearch' as const, data: rest, row: placementData.restOfSearch, label: 'Rest of Search' },
+      { key: 'productPages' as const, data: product, row: placementData.productPages, label: 'Product Pages' },
     ]
 
-    for (const { key, data, row } of placements) {
+    for (const { key, data, row, label } of placements) {
       if (!data) {
         layer2Result[key] = {
-          suggestedAdjustment: parseNum(row.bidAdjustment ?? '') || 0,
+          suggestedAdjustment: Math.max(MIN_PLACEMENT_ADJ, parseNum(row.bidAdjustment ?? '') || 0),
           changePercent: 0,
           rationale: 'No data for this placement.',
         }
         continue
       }
 
-      const currentAdj = data.bidAdjustment
+      const currentAdj = Math.max(MIN_PLACEMENT_ADJ, data.bidAdjustment)
       let suggestedAdj = currentAdj
       let placeRationale = ''
 
-      if (data.sales > 0 && data.totalCost > 0) {
+      if (data.clicks > 0 && data.clicks < MIN_PLACEMENT_CLICKS) {
+        placeRationale = `Only ${data.clicks} clicks (need ≥${MIN_PLACEMENT_CLICKS}). Maintain current adjustment until more data.`
+      } else if (data.sales > 0 && data.totalCost > 0) {
         const placeAcos = (data.totalCost / data.sales) * 100
-
-        // Target ACoS as primary gate: only amplify when below target, reduce when above
         const isProfitablePlacement = placeAcos < targetAcosPct * 0.9
         const isUnprofitablePlacement = placeAcos > targetAcosPct * 1.1
 
         if (isProfitablePlacement) {
-          placeRationale = `ACoS ${placeAcos.toFixed(1)}% below target ${targetAcosPct}%. Amplify to shift traffic here.`
-          const baseIncrease = placeAcos < targetAcosPct * 0.5 ? 50 : placeAcos < targetAcosPct * 0.7 ? 35 : 25
+          // Conservative amplify: 10 / 15 / 25 max per cycle (expert cadence)
+          const baseIncrease =
+            placeAcos < targetAcosPct * 0.5 ? 25 : placeAcos < targetAcosPct * 0.7 ? 15 : 10
           const increase = Math.min(MAX_PLACEMENT_CHANGE_PCT, baseIncrease)
-          suggestedAdj = Math.min(currentAdj + increase, 900)
+          if (!canAmplifyPlacement(data.cpc, data.sales, data.clicks, targetAcos)) {
+            suggestedAdj = currentAdj
+            placeRationale = `ACoS ${placeAcos.toFixed(1)}% below target ${targetAcosPct}%, but placement CPC already above affordable CPC for this placement. Hold adjustment.`
+          } else {
+            suggestedAdj = Math.min(currentAdj + increase, MAX_PLACEMENT_ADJ)
+            if (key === 'restOfSearch') {
+              placeRationale = `ACoS ${placeAcos.toFixed(1)}% below target ${targetAcosPct}%. Small Rest of Search boost; Rest volume is still mainly controlled by base bid.`
+            } else {
+              placeRationale = `ACoS ${placeAcos.toFixed(1)}% below target ${targetAcosPct}%. Amplify ${label} (+${increase} pts this cycle).`
+            }
+          }
         } else if (isUnprofitablePlacement) {
-          placeRationale = `Placement ACoS ${placeAcos.toFixed(1)}% exceeds target ${targetAcosPct}%. Reduce exposure.`
-          const decrease = placeAcos > targetAcosPct * 1.5 ? 35 : 25
-          suggestedAdj = Math.max(currentAdj - decrease, currentAdj - 25, -50)
+          // Cut toward Amazon floor 0% in 15–25 pt steps — never negative
+          const decrease = placeAcos > targetAcosPct * 1.5 ? 25 : 15
+          suggestedAdj = Math.max(MIN_PLACEMENT_ADJ, currentAdj - decrease)
+          if (key === 'restOfSearch') {
+            placeRationale =
+              suggestedAdj === 0 && currentAdj === 0
+                ? `Placement ACoS ${placeAcos.toFixed(1)}% exceeds target ${targetAcosPct}%. Rest of Search already at 0% — reduce exposure via base bid (Layer 1).`
+                : `Placement ACoS ${placeAcos.toFixed(1)}% exceeds target ${targetAcosPct}%. Cut Rest of Search toward 0% (Amazon floor); further control is via base bid.`
+          } else {
+            placeRationale =
+              suggestedAdj === 0
+                ? `Placement ACoS ${placeAcos.toFixed(1)}% exceeds target ${targetAcosPct}%. Set ${label} to 0% (Amazon minimum).`
+                : `Placement ACoS ${placeAcos.toFixed(1)}% exceeds target ${targetAcosPct}%. Reduce ${label} toward 0% (−${decrease} pts this cycle).`
+          }
         } else {
           placeRationale = `ACoS ${placeAcos.toFixed(1)}% near target ${targetAcosPct}%. Maintain current adjustment.`
         }
@@ -228,7 +274,7 @@ export function optimize(
       }
 
       suggestedAdj = Math.round(suggestedAdj)
-      suggestedAdj = Math.max(-50, Math.min(900, suggestedAdj))
+      suggestedAdj = Math.max(MIN_PLACEMENT_ADJ, Math.min(MAX_PLACEMENT_ADJ, suggestedAdj))
 
       layer2Result[key] = {
         suggestedAdjustment: suggestedAdj,
