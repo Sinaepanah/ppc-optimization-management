@@ -78,6 +78,8 @@ Rules:
 - ACOS: numeric percent only, no % sign (e.g. "42.16" not "42.16%")
 - Bid / Total cost / CPC / Sales: include $ prefix
 - Impressions / Clicks / Purchases: digits only, commas allowed
+- If Total cost / Spend column is not visible, totalCost MUST be ""
+- Never copy CPC into totalCost
 - If a metric column is not visible in the image, leave that field as ""
 - Do not invent Total cost or Sales when those columns are absent — leave them ""
 - Ignore keyword names, status, and "Top of search IS" (impression share) columns
@@ -102,6 +104,8 @@ Rules:
 - ACOS: numeric percent only, no % sign
 - Currency fields: "$X.XX" (£ → $ same number)
 - Ignore header and Total rows for the three placement objects
+- Many Amazon placement screenshots do NOT show Total cost / Spend — if that column header is not visible, totalCost MUST be ""
+- Never copy CPC into totalCost. CPC and Total cost are different fields.
 - If a metric column is not visible for a row, leave that field as ""
 - Do not invent Total cost or Sales when those columns are absent — leave them ""
 - If a placement row is missing, still return the object with all ""`
@@ -256,10 +260,46 @@ function parseAcosNum(v) {
 }
 
 /**
- * Fill ONLY blank metric fields using Amazon identities.
- * Never overwrites a value that came from the screenshot.
- * spend = clicks × cpc; sales = spend / (ACOS/100); etc.
+ * Fill blank metric fields using Amazon identities.
+ * Also repairs common vision mistakes when Total cost/Spend is absent from the
+ * screenshot but the model copied CPC into totalCost (totalCost ≈ cpc while clicks > 1).
+ *
+ * Prefer: spend = sales × (ACOS/100), else spend = clicks × CPC.
+ * Never overwrite a totalCost that already agrees with sales×ACOS or clicks×CPC.
  */
+function nearlyEqual(a, b, absTol = 0.02, relTol = 0.05) {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false
+  const diff = Math.abs(a - b)
+  if (diff <= absTol) return true
+  const scale = Math.max(Math.abs(a), Math.abs(b), 1e-9)
+  return diff / scale <= relTol
+}
+
+function isBogusTotalCost(totalCost, cpc, clicks, sales, acos) {
+  if (!Number.isFinite(totalCost)) return true
+  // Classic failure: model put CPC into Total cost when Spend column missing
+  if (Number.isFinite(cpc) && Number.isFinite(clicks) && clicks > 1 && nearlyEqual(totalCost, cpc, 0.02, 0.02)) {
+    return true
+  }
+  // Conflicts hard with ACOS identity when Sales + ACOS are present
+  if (Number.isFinite(sales) && Number.isFinite(acos) && acos > 0 && sales >= 0) {
+    const fromAcos = sales * (acos / 100)
+    if (fromAcos >= 0.01 && !nearlyEqual(totalCost, fromAcos, 0.5, 0.25)) {
+      // If clicks×cpc also disagrees, definitely bogus; if clicks×cpc agrees with fromAcos, trust fromAcos path
+      if (Number.isFinite(clicks) && Number.isFinite(cpc) && clicks > 0) {
+        const fromCpc = clicks * cpc
+        if (nearlyEqual(fromAcos, fromCpc, 1.0, 0.15) && !nearlyEqual(totalCost, fromCpc, 0.5, 0.25)) {
+          return true
+        }
+      }
+      if (Number.isFinite(clicks) && clicks > 1 && Number.isFinite(cpc) && nearlyEqual(totalCost, cpc, 0.05, 0.05)) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
 function deriveMissingMetrics(row, { includeCtr = false } = {}) {
   const out = { ...row }
 
@@ -270,12 +310,18 @@ function deriveMissingMetrics(row, { includeCtr = false } = {}) {
   let sales = parseMoney(out.sales)
   let acos = parseAcosNum(out.acos)
 
-  if (isBlank(out.totalCost) && Number.isFinite(clicks) && Number.isFinite(cpc) && clicks >= 0 && cpc >= 0) {
-    totalCost = clicks * cpc
-    out.totalCost = `$${totalCost.toFixed(2)}`
+  if (isBogusTotalCost(totalCost, cpc, clicks, sales, acos)) {
+    out.totalCost = ''
+    totalCost = NaN
   }
+
+  // Prefer Sales × ACOS (Amazon definition) when Spend column missing
   if (isBlank(out.totalCost) && Number.isFinite(sales) && Number.isFinite(acos) && acos > 0 && sales >= 0) {
     totalCost = sales * (acos / 100)
+    out.totalCost = `$${totalCost.toFixed(2)}`
+  }
+  if (isBlank(out.totalCost) && Number.isFinite(clicks) && Number.isFinite(cpc) && clicks >= 0 && cpc >= 0) {
+    totalCost = clicks * cpc
     out.totalCost = `$${totalCost.toFixed(2)}`
   }
   if (isBlank(out.sales) && Number.isFinite(totalCost) && Number.isFinite(acos) && acos > 0) {
