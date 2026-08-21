@@ -4,6 +4,7 @@
  */
 
 import { parseCSV } from '../../utils/csv'
+import { deriveMissingKeywordMetrics } from './deriveMissingMetrics'
 
 export interface KeywordRow {
   campaign?: string
@@ -142,7 +143,8 @@ export function parseKeywordCsv(text: string): KeywordCsvParseResult {
       }
     }
 
-    rows.push(keywordRow)
+    const derived = deriveMissingKeywordMetrics(keywordRow)
+    rows.push({ ...derived, raw: rawRecord })
   }
 
   return { headers, rows }

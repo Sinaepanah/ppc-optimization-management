@@ -5,6 +5,7 @@
  */
 
 import type { KeywordRow } from './keywordCsvParser'
+import { deriveMissingKeywordMetrics } from './deriveMissingMetrics'
 
 export interface KeywordOptimization {
   rowIndex: number
@@ -27,7 +28,7 @@ export interface KeywordOptimization {
   roas: number
 }
 
-const MAX_BID_CHANGE_PCT = 25
+const MAX_BID_CHANGE_PCT = 20
 const MAX_BID_REDUCTION_PCT = 50
 const MIN_BID = 0.02
 const LOW_IMPRESSION_THRESHOLD = 50
@@ -51,27 +52,28 @@ export function optimizeKeyword(
   rowIndex: number,
   targetAcosPct: number
 ): KeywordOptimization | null {
-  const bid = parseNum(row.bid)
-  const clicks = parseNum(row.clicks)
-  const spend = parseNum(row.spend)
-  const sales = parseNum(row.sales)
-  const orders = parseNum(row.orders)
-  const impressions = parseNum(row.impressions)
-  const acosRaw = parseAcos(row.acos)
+  const filled = deriveMissingKeywordMetrics(row)
+  const bid = parseNum(filled.bid)
+  const clicks = parseNum(filled.clicks)
+  const spend = parseNum(filled.spend)
+  const sales = parseNum(filled.sales)
+  const orders = parseNum(filled.orders)
+  const impressions = parseNum(filled.impressions)
+  const acosRaw = parseAcos(filled.acos)
   const acos = acosRaw || (spend > 0 && sales > 0 ? (spend / sales) * 100 : 0)
   const roas = spend > 0 ? sales / spend : 0
-  const cvrRaw = parseNum(row.cvr)
+  const cvrRaw = parseNum(filled.cvr)
   const cvr = cvrRaw > 0 ? cvrRaw : (clicks > 0 && orders > 0 ? (orders / clicks) * 100 : 0)
 
-  const keyword = (row.keyword ?? row.raw['Keyword'] ?? row.raw['Targeting'] ?? '').trim() || `Row ${rowIndex + 1}`
+  const keyword = (filled.keyword ?? filled.raw['Keyword'] ?? filled.raw['Targeting'] ?? '').trim() || `Row ${rowIndex + 1}`
 
   if (bid <= 0) {
     return {
       rowIndex,
       keyword,
-      campaign: row.campaign,
-      adGroup: row.adGroup,
-      matchType: row.matchType,
+      campaign: filled.campaign,
+      adGroup: filled.adGroup,
+      matchType: filled.matchType,
       currentBid: 0,
       suggestedBid: MIN_BID,
       changePercent: 0,
@@ -238,9 +240,9 @@ export function optimizeKeyword(
   return {
     rowIndex,
     keyword,
-    campaign: row.campaign,
-    adGroup: row.adGroup,
-    matchType: row.matchType,
+    campaign: filled.campaign,
+    adGroup: filled.adGroup,
+    matchType: filled.matchType,
     currentBid: bid,
     suggestedBid,
     changePercent,
