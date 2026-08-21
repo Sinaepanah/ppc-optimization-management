@@ -1,7 +1,21 @@
 import { getApiBase } from '../../utils/storage'
 import type { ExtractedPlacementData } from './placementParser'
 
-export type VisionExtractMode = 'adLevel' | 'placement'
+export type VisionExtractMode = 'adLevel' | 'placement' | 'bulkKeywords'
+
+export type BulkKeywordExtractRow = {
+  keyword: string
+  matchType: string
+  bid: string
+  impressions: string
+  clicks: string
+  spend: string
+  cpc: string
+  orders: string
+  sales: string
+  acos: string
+  ctr: string
+}
 
 function fileToBase64Payload(file: File): Promise<{ imageBase64: string; mimeType: string }> {
   return new Promise((resolve, reject) => {
@@ -21,12 +35,12 @@ function fileToBase64Payload(file: File): Promise<{ imageBase64: string; mimeTyp
 }
 
 /**
- * Call backend OpenAI vision extract. Same fields as the existing Exact Bid Tools forms.
+ * Call backend OpenAI vision extract.
  */
 export async function extractScreenshotViaVision(
   file: File,
   mode: VisionExtractMode
-): Promise<Record<string, string> | ExtractedPlacementData> {
+): Promise<Record<string, string> | ExtractedPlacementData | { keywords: BulkKeywordExtractRow[] }> {
   const { imageBase64, mimeType } = await fileToBase64Payload(file)
   const base = getApiBase().replace(/\/$/, '')
   const resp = await fetch(`${base}/api/ppc/extract-screenshot`, {
@@ -35,7 +49,10 @@ export async function extractScreenshotViaVision(
     body: JSON.stringify({ imageBase64, mimeType, mode }),
   })
 
-  let body: { error?: string; data?: Record<string, string> | ExtractedPlacementData } = {}
+  let body: {
+    error?: string
+    data?: Record<string, string> | ExtractedPlacementData | { keywords: BulkKeywordExtractRow[] }
+  } = {}
   try {
     body = await resp.json()
   } catch {
@@ -49,4 +66,43 @@ export async function extractScreenshotViaVision(
     throw new Error('Extract returned no data')
   }
   return body.data
+}
+
+/** Build a CSV string from vision keyword rows so Bulk PPC can reuse its parser/optimizer. */
+export function bulkKeywordsToCsv(keywords: BulkKeywordExtractRow[]): string {
+  const headers = [
+    'Keyword',
+    'Match Type',
+    'Bid',
+    'Impressions',
+    'Clicks',
+    'Spend',
+    'CPC',
+    'Orders',
+    'Sales',
+    'ACOS',
+    'CTR',
+  ]
+  const escape = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const lines = [headers.join(',')]
+  for (const k of keywords) {
+    lines.push(
+      [
+        k.keyword,
+        k.matchType,
+        k.bid,
+        k.impressions,
+        k.clicks,
+        k.spend,
+        k.cpc,
+        k.orders,
+        k.sales,
+        k.acos,
+        k.ctr,
+      ]
+        .map(escape)
+        .join(',')
+    )
+  }
+  return lines.join('\n')
 }

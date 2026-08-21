@@ -1,16 +1,41 @@
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Upload, Download, ChevronUp, ChevronDown } from 'lucide-react'
 import { parseKeywordCsv } from './utils/keywordCsvParser'
 import { optimizeBulk } from './utils/bulkOptimizer'
 import { NumberInputWithArrows } from '../ppcTool/components/NumberInputWithArrows'
 import { isSupportedTabularFile, readEncodedTextFile, TABULAR_UPLOAD_ACCEPT } from '../utils/readEncodedTextFile'
+import {
+  bulkKeywordsToCsv,
+  extractScreenshotViaVision,
+  type BulkKeywordExtractRow,
+} from '../ppcTool/utils/visionExtract'
 import './BulkPpc.css'
+
+const UPLOAD_ACCEPT = `${TABULAR_UPLOAD_ACCEPT},image/*`
+
+function getClipboardImage(e: ClipboardEvent): File | null {
+  const items = e.clipboardData?.items
+  if (items) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item?.type?.startsWith('image/')) {
+        const f = item.getAsFile()
+        if (f) return f
+      }
+    }
+  }
+  const fromFiles = e.clipboardData?.files?.[0]
+  if (fromFiles?.type.startsWith('image/')) return fromFiles
+  return null
+}
 
 export function BulkPpcPage() {
   const [csvText, setCsvText] = useState('')
   const [fileName, setFileName] = useState<string | null>(null)
   const [targetAcos, setTargetAcos] = useState('35')
   const [fileError, setFileError] = useState<string | null>(null)
+  const [pasteSelected, setPasteSelected] = useState(false)
+  const [imageStatus, setImageStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const parseResult = useMemo(() => {
@@ -26,43 +51,83 @@ export function BulkPpcPage() {
   const parsed = parseResult.result
   const displayError = parseResult.error ?? fileError
 
-  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!isSupportedTabularFile(file)) {
-      setFileError('Please select a CSV or Excel file')
-      e.target.value = ''
-      return
-    }
+  const runImageExtract = useCallback(async (file: File) => {
+    setImageStatus('loading')
+    setFileError(null)
     try {
-      const text = await readEncodedTextFile(file)
-      setCsvText(text)
-      setFileName(file.name)
-      setFileError(null)
-    } catch {
-      setFileError('Failed to read file')
+      const data = (await extractScreenshotViaVision(file, 'bulkKeywords')) as {
+        keywords: BulkKeywordExtractRow[]
+      }
+      const keywords = Array.isArray(data?.keywords) ? data.keywords : []
+      if (keywords.length === 0) {
+        throw new Error('No keywords found in screenshot')
+      }
+      setCsvText(bulkKeywordsToCsv(keywords))
+      setFileName(file.name || 'screenshot-extract.csv')
+      setImageStatus('done')
+    } catch (err) {
+      setFileError(err instanceof Error ? err.message : 'Screenshot extract failed')
+      setImageStatus('error')
     }
-    e.target.value = ''
   }, [])
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault()
-    const file = e.dataTransfer.files[0]
-    if (file && isSupportedTabularFile(file)) {
+  const ingestFile = useCallback(
+    async (file: File) => {
+      if (file.type.startsWith('image/')) {
+        await runImageExtract(file)
+        return
+      }
+      if (!isSupportedTabularFile(file)) {
+        setFileError('Please select a CSV, Excel, or screenshot image')
+        return
+      }
       try {
         const text = await readEncodedTextFile(file)
         setCsvText(text)
         setFileName(file.name)
         setFileError(null)
+        setImageStatus('idle')
       } catch {
         setFileError('Failed to read file')
       }
-    } else if (file) {
-      setFileError('Please drop a CSV or Excel file')
-    }
-  }, [])
+    },
+    [runImageExtract]
+  )
+
+  const handleFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      await ingestFile(file)
+      e.target.value = ''
+    },
+    [ingestFile]
+  )
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault()
+      setPasteSelected(true)
+      const file = e.dataTransfer.files[0]
+      if (file) await ingestFile(file)
+    },
+    [ingestFile]
+  )
 
   const handleDragOver = useCallback((e: React.DragEvent) => e.preventDefault(), [])
+
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
+      if (!pasteSelected) return
+      const file = getClipboardImage(e)
+      if (!file) return
+      e.preventDefault()
+      void runImageExtract(file)
+    }
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [pasteSelected, runImageExtract])
 
   const targetAcosNum = parseFloat(targetAcos.replace(/[%,\s]/g, '')) || 35
   const optimizations = useMemo(() => {
@@ -135,38 +200,55 @@ export function BulkPpcPage() {
       <div className="panel">
         <h2>Bulk PPC Optimizer</h2>
         <p className="bulk-ppc-desc">
-          Upload an Amazon keyword report CSV (Broad or Phrase campaigns). Each row is one keyword.
-          The tool analyzes performance and suggests bid adjustments based on Target ACoS.
+          Upload an Amazon keyword report CSV, or click the box and paste (Ctrl+V) / drop a screenshot.
+          Each row is one keyword. Missing Spend/Sales/ACOS are calculated when possible. Suggested bids use Target ACoS.
         </p>
 
         <div
-          className="bulk-ppc-upload"
+          className={`bulk-ppc-upload ${pasteSelected ? 'bulk-ppc-upload--selected' : ''}`}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
+          onClick={() => setPasteSelected(true)}
         >
           <input
             ref={fileInputRef}
             type="file"
-            accept={TABULAR_UPLOAD_ACCEPT}
+            accept={UPLOAD_ACCEPT}
             onChange={handleFileChange}
             className="bulk-ppc-upload-input"
           />
-          <div className="bulk-ppc-upload-content">
-            <Upload className="bulk-ppc-upload-icon" aria-hidden />
-            <p className="bulk-ppc-upload-title">
-              {fileName ? fileName : 'Drop CSV or click to browse'}
-            </p>
-            <p className="bulk-ppc-upload-hint">
-              Amazon keyword report with columns: Keyword, Bid, Impressions, Clicks, Spend, Sales, ACOS, etc.
-            </p>
-            <button
-              type="button"
-              className="bulk-ppc-browse-btn"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Browse
-            </button>
-          </div>
+          {imageStatus === 'loading' ? (
+            <div className="bulk-ppc-upload-content">
+              <p className="bulk-ppc-upload-title">Reading screenshot…</p>
+              <p className="bulk-ppc-upload-hint">Extracting keywords with vision (same as Exact Bid Tools)</p>
+            </div>
+          ) : (
+            <div className="bulk-ppc-upload-content">
+              <Upload className="bulk-ppc-upload-icon" aria-hidden />
+              <p className="bulk-ppc-upload-title">
+                {fileName ? fileName : 'Drop CSV / screenshot, or click then Ctrl+V to paste'}
+              </p>
+              {pasteSelected && (
+                <p className="bulk-ppc-upload-hint" style={{ fontWeight: 600 }}>
+                  Paste target active (Ctrl+V)
+                </p>
+              )}
+              <p className="bulk-ppc-upload-hint">
+                CSV/Excel keyword report, or Amazon Ads keyword table screenshot
+              </p>
+              <button
+                type="button"
+                className="bulk-ppc-browse-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setPasteSelected(true)
+                  fileInputRef.current?.click()
+                }}
+              >
+                Browse
+              </button>
+            </div>
+          )}
         </div>
 
         {displayError && <p className="bulk-ppc-error">{displayError}</p>}

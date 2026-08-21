@@ -27,6 +27,12 @@
   background: var(--color-bg);
 }
 
+.bulk-ppc-upload--selected {
+  border-color: var(--color-accent, #0f766e);
+  background: var(--color-bg);
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.2);
+}
+
 .bulk-ppc-upload-input {
   position: absolute;
   width: 0;

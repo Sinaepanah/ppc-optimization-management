@@ -66,6 +66,69 @@ const PLACEMENT_SCHEMA = {
   required: ['topOfSearch', 'restOfSearch', 'productPages'],
 }
 
+const BULK_KEYWORD_ROW_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    keyword: { type: 'string' },
+    matchType: { type: 'string' },
+    bid: { type: 'string' },
+    impressions: { type: 'string' },
+    clicks: { type: 'string' },
+    spend: { type: 'string' },
+    cpc: { type: 'string' },
+    orders: { type: 'string' },
+    sales: { type: 'string' },
+    acos: { type: 'string' },
+    ctr: { type: 'string' },
+  },
+  required: [
+    'keyword',
+    'matchType',
+    'bid',
+    'impressions',
+    'clicks',
+    'spend',
+    'cpc',
+    'orders',
+    'sales',
+    'acos',
+    'ctr',
+  ],
+}
+
+const BULK_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    keywords: {
+      type: 'array',
+      items: BULK_KEYWORD_ROW_SCHEMA,
+    },
+  },
+  required: ['keywords'],
+}
+
+const BULK_PROMPT = `You extract Amazon Advertising keyword / targeting table rows from a screenshot for bulk PPC optimization.
+
+Return ONLY JSON: { "keywords": [ ... ] }
+Each keyword object has string fields:
+keyword, matchType, bid, impressions, clicks, spend, cpc, orders, sales, acos, ctr
+
+Rules:
+- Extract EVERY visible data row (not the header, not blank spacer rows).
+- Read numbers exactly as shown. Do not invent values.
+- Empty / dash / em-dash cells → ""
+- matchType: EXACT / PHRASE / BROAD / or "" if not shown
+- Currency: "$X.XX" (£ → $ same number) for bid, spend, cpc, sales
+- ACOS: numeric percent only, no % sign
+- CTR: like "0.82%" or "" if missing
+- If Spend / Total cost column is NOT visible, spend MUST be ""
+- Never copy CPC into spend
+- If Purchases/Orders column exists use it for orders; else ""
+- If a column is not visible, leave that field ""
+- Include keyword text from the Keyword / Targeting column`
+
 const AD_LEVEL_PROMPT = `You extract Amazon Advertising Campaign Manager ad-level metrics from a screenshot.
 
 Return ONLY JSON with these string fields:
@@ -390,7 +453,7 @@ function parseJsonContent(content) {
 }
 
 /**
- * @param {{ imageBase64: string, mimeType: string, mode: 'adLevel' | 'placement', apiKey: string, model?: string }} opts
+ * @param {{ imageBase64: string, mimeType: string, mode: 'adLevel' | 'placement' | 'bulkKeywords', apiKey: string, model?: string }} opts
  */
 export async function extractPpcFromScreenshot(opts) {
   const { imageBase64, mimeType, mode, apiKey } = opts
@@ -406,8 +469,8 @@ export async function extractPpcFromScreenshot(opts) {
     err.status = 400
     throw err
   }
-  if (mode !== 'adLevel' && mode !== 'placement') {
-    const err = new Error('mode must be adLevel or placement')
+  if (mode !== 'adLevel' && mode !== 'placement' && mode !== 'bulkKeywords') {
+    const err = new Error('mode must be adLevel, placement, or bulkKeywords')
     err.status = 400
     throw err
   }
@@ -415,9 +478,22 @@ export async function extractPpcFromScreenshot(opts) {
   const mime = mimeType && String(mimeType).startsWith('image/') ? mimeType : 'image/png'
   const dataUrl = `data:${mime};base64,${imageBase64.replace(/^data:[^;]+;base64,/, '')}`
 
-  const isAd = mode === 'adLevel'
-  const schema = isAd ? AD_LEVEL_SCHEMA : PLACEMENT_SCHEMA
-  const schemaName = isAd ? 'ad_level_ppc' : 'placement_ppc'
+  let schema
+  let schemaName
+  let prompt
+  if (mode === 'adLevel') {
+    schema = AD_LEVEL_SCHEMA
+    schemaName = 'ad_level_ppc'
+    prompt = AD_LEVEL_PROMPT
+  } else if (mode === 'placement') {
+    schema = PLACEMENT_SCHEMA
+    schemaName = 'placement_ppc'
+    prompt = PLACEMENT_PROMPT
+  } else {
+    schema = BULK_SCHEMA
+    schemaName = 'bulk_keywords_ppc'
+    prompt = BULK_PROMPT
+  }
 
   const body = {
     model,
@@ -434,7 +510,7 @@ export async function extractPpcFromScreenshot(opts) {
       {
         role: 'user',
         content: [
-          { type: 'text', text: isAd ? AD_LEVEL_PROMPT : PLACEMENT_PROMPT },
+          { type: 'text', text: prompt },
           { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } },
         ],
       },
@@ -473,14 +549,58 @@ export async function extractPpcFromScreenshot(opts) {
   const content = parsed?.choices?.[0]?.message?.content
   const data = parseJsonContent(content)
 
-  if (isAd) {
+  if (mode === 'adLevel') {
     const out = deriveMissingAdLevel(normalizeAdLevel(data))
     const filled = Object.values(out).filter((v) => v !== '').length
     if (filled === 0) return { ...emptyAdLevel(), ...out }
     return out
   }
 
-  return deriveMissingPlacement(normalizePlacement(data))
+  if (mode === 'placement') {
+    return deriveMissingPlacement(normalizePlacement(data))
+  }
+
+  return normalizeBulkKeywords(data)
+}
+
+function normalizeBulkKeyword(row) {
+  const src = row && typeof row === 'object' ? row : {}
+  // Map into ad-level derive shape (totalCost/purchases), then back to bulk field names
+  const derived = deriveMissingMetrics(
+    {
+      bid: normalizeCurrency(src.bid),
+      impressions: normalizeInt(src.impressions),
+      clicks: normalizeInt(src.clicks),
+      totalCost: normalizeCurrency(src.spend),
+      cpc: normalizeCurrency(src.cpc),
+      purchases: normalizeInt(src.orders),
+      sales: normalizeCurrency(src.sales),
+      acos: normalizeAcos(src.acos),
+      ctr: asString(src.ctr),
+    },
+    { includeCtr: true }
+  )
+  return {
+    keyword: asString(src.keyword),
+    matchType: asString(src.matchType),
+    bid: derived.bid?.replace(/^\$/, '') ?? '',
+    impressions: derived.impressions ?? '',
+    clicks: derived.clicks ?? '',
+    spend: (derived.totalCost || '').replace(/^\$/, ''),
+    cpc: (derived.cpc || '').replace(/^\$/, ''),
+    orders: derived.purchases ?? '',
+    sales: (derived.sales || '').replace(/^\$/, ''),
+    acos: derived.acos ?? '',
+    ctr: derived.ctr ?? '',
+  }
+}
+
+function normalizeBulkKeywords(data) {
+  const list = Array.isArray(data?.keywords) ? data.keywords : []
+  const keywords = list
+    .map(normalizeBulkKeyword)
+    .filter((k) => k.keyword || k.clicks || k.impressions || k.bid)
+  return { keywords }
 }
 
 export {
@@ -489,4 +609,5 @@ export {
   deriveMissingAdLevel,
   deriveMissingPlacement,
   deriveMissingMetrics,
+  normalizeBulkKeywords,
 }
